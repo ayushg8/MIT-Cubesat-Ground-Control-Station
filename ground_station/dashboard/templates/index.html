@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MuraltZ GCS — Mission Operations</title>
+<style>
+/* ── Reset & Base ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #0a0e17;
+  --bg2:        #111827;
+  --bg3:        #1a2233;
+  --border:     #2a3040;
+  --border2:    #3a4055;
+  --cyan:       #00d4ff;
+  --cyan-dim:   #007a99;
+  --amber:      #ff9500;
+  --amber-dim:  #994800;
+  --green:      #00c875;
+  --red:        #ff3b3b;
+  --text:       #c8d0e0;
+  --text-dim:   #6b7280;
+  --text-bright:#e8eaf0;
+  --mono:       "SF Mono", "Fira Mono", "Consolas", monospace;
+  --sans:       "Inter", "Source Sans Pro", system-ui, sans-serif;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  height: 44px;
+}
+#header .title {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+#header .subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#server-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+#conn-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-right: 6px;
+  vertical-align: middle;
+  transition: background 0.3s;
+}
+#conn-dot.live { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+
+/* ── Grid Layout ─────────────────────────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: 260px 260px 1fr 1fr;
+  grid-template-rows: auto;
+  gap: 1px;
+  background: var(--border);
+  padding: 1px;
+  min-height: calc(100vh - 44px);
+}
+
+/* ── Panel ───────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--bg2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  flex-shrink: 0;
+}
+.panel-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.panel-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.panel-badge.core {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.panel-body {
+  padding: 10px;
+  flex: 1;
+  overflow: auto;
+}
+
+/* ── Status dot ──────────────────────────────────────────────────────────── */
+.dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.dot-cyan   { background: var(--cyan);  box-shadow: 0 0 4px var(--cyan); }
+.dot-amber  { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
+.dot-green  { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.dot-red    { background: var(--red);   box-shadow: 0 0 4px var(--red); }
+.dot-gray   { background: var(--text-dim); }
+
+/* ── KV rows ─────────────────────────────────────────────────────────────── */
+.kv { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--text-dim); font-size: 11px; }
+.kv .v { font-family: var(--mono); font-size: 11px; color: var(--text-bright); text-align: right; }
+.kv .v.warn { color: var(--amber); }
+.kv .v.alert { color: var(--red); }
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
+.prog-track {
+  height: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  margin: 6px 0;
+  position: relative;
+}
+.prog-fill {
+  height: 100%;
+  background: var(--cyan);
+  transition: width 0.5s;
+  width: 0%;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn:hover   { border-color: var(--cyan); color: var(--cyan); }
+.btn.amber   { border-color: var(--amber-dim); color: var(--amber); }
+.btn.amber:hover { border-color: var(--amber); }
+.btn.danger  { border-color: #5a1a1a; color: var(--red); }
+.btn.danger:hover { border-color: var(--red); }
+.btn.full    { width: 100%; margin-bottom: 5px; }
+.btn.ok      { border-color: var(--green) !important; color: var(--green) !important; }
+.btn.fail    { border-color: var(--red)   !important; color: var(--red)   !important; }
+
+input.cmd-input {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 7px;
+  width: 100%;
+  outline: none;
+}
+input.cmd-input:focus { border-color: var(--cyan); }
+
+.cmd-row { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }
+.cmd-row input { flex: 1; }
+.cmd-row .btn { flex-shrink: 0; white-space: nowrap; }
+.cmd-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+             letter-spacing: 0.08em; margin-bottom: 3px; margin-top: 7px; }
+
+/* ── Images ──────────────────────────────────────────────────────────────── */
+.map-img {
+  width: 100%;
+  border: 1px solid var(--border2);
+  display: block;
+  background: var(--bg3);
+  min-height: 80px;
+}
+.map-img.change-active { border-color: var(--amber); box-shadow: 0 0 6px var(--amber-dim); }
+.img-placeholder {
+  width: 100%; min-height: 80px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 11px; font-family: var(--mono);
+  letter-spacing: 0.06em;
+}
+
+/* ── Coverage canvas ─────────────────────────────────────────────────────── */
+#coverage-canvas {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border2);
+  image-rendering: pixelated;
+}
+
+/* ── Quality log table ───────────────────────────────────────────────────── */
+.q-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.q-table th {
+  background: var(--bg3);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border2);
+  text-align: left;
+  position: sticky;
+  top: 0;
+}
+.q-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.q-table tr:nth-child(even) td { background: #0d1220; }
+.q-table tr:hover td { background: #14203a; }
+.pass-ok   { color: var(--green); }
+.pass-fail { color: var(--red); }
+
+/* ── Event log ───────────────────────────────────────────────────────────── */
+#event-log {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+#event-log .line-err  { color: var(--red); }
+#event-log .line-warn { color: var(--amber); }
+#event-log .line-info { color: var(--text-dim); }
+
+/* ── Change map panel highlight ──────────────────────────────────────────── */
+.panel.core-panel .panel-header { border-bottom-color: var(--amber-dim); }
+.panel.core-panel { border: 1px solid var(--amber-dim); }
+
+/* ── Column span helpers ─────────────────────────────────────────────────── */
+.col-span-2 { grid-column: span 2; }
+.col-span-3 { grid-column: span 3; }
+.col-span-4 { grid-column: span 4; }
+
+/* ── Section dividers in panels ──────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 7px 0; }
+
+.note { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); }
+.note.warn { color: var(--amber); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div>
+    <span class="title">MuraltZ GCS</span>
+    <span class="subtitle" style="margin-left:14px;">Artemis Lunar Navigator · MIT BWSI 2025-2026</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span><span id="conn-dot"></span><span id="conn-label" style="font-size:11px;color:var(--text-dim);">CONNECTING</span></span>
+    <span id="server-time" style="font-family:var(--mono);font-size:11px;">--</span>
+  </div>
+</div>
+
+<!-- ── Main grid ──────────────────────────────────────────────────────── -->
+<div id="grid">
+
+  <!-- 1. Mission Status -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Mission Status</span>
+      <span class="panel-badge" id="sat-state-badge">--</span>
+    </div>
+    <div class="panel-body">
+      <div class="kv"><span class="k">State</span>      <span class="v" id="s-state">--</span></div>
+      <div class="kv"><span class="k">Pass</span>       <span class="v" id="s-pass">--</span></div>
+      <div class="kv"><span class="k">Images RX</span> <span class="v" id="s-images">--</span></div>
+      <div class="kv"><span class="k">Corrupted</span> <span class="v" id="s-corrupt">--</span></div>
+      <div class="kv"><span class="k">Coverage</span>  <span class="v" id="s-coverage">--</span></div>
+      <div class="kv"><span class="k">Route</span>     <span class="v" id="s-route">--</span></div>
+      <div class="kv"><span class="k">Changes</span>   <span class="v" id="s-changes">--</span></div>
+      <div class="kv"><span class="k">Updated</span>   <span class="v" id="s-updated" style="font-size:10px;">--</span></div>
+    </div>
+  </div>
+
+  <!-- 2. Telemetry -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Telemetry</span>
+    </div>
+    <div class="panel-body">
+      <div class="kv"><span class="k">Sat State</span>  <span class="v" id="t-state">--</span></div>
+      <div class="kv"><span class="k">Roll</span>       <span class="v" id="t-roll">--</span></div>
+      <div class="kv"><span class="k">Pitch</span>      <span class="v" id="t-pitch">--</span></div>
+      <div class="kv"><span class="k">CPU Temp</span>   <span class="v" id="t-temp">--</span></div>
+      <div class="kv"><span class="k">Storage</span>    <span class="v" id="t-storage">--</span></div>
+      <div class="kv"><span class="k">Queue</span>      <span class="v" id="t-queue">--</span></div>
+      <div class="kv"><span class="k">Nadir Lock</span> <span class="v" id="t-nadir">--</span></div>
+      <div class="kv"><span class="k">Uptime</span>     <span class="v" id="t-uptime">--</span></div>
+    </div>
+  </div>
+
+  <!-- 3. Downlink Progress (spans cols 3-4) -->
+  <div class="panel col-span-2">
+    <div class="panel-header">
+      <span class="panel-title">Downlink</span>
+      <span class="panel-badge" id="dl-rate-badge">-- B/s</span>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">BYTES RECEIVED</span>
+        <span style="font-family:var(--mono);font-size:11px;" id="dl-bytes">-- / 72,000</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="dl-bar"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-top:10px;">
+        <div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Rate</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--cyan);" id="dl-rate">--</div>
+          <div style="font-size:10px;color:var(--text-dim);">B/s</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Total</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--cyan);" id="dl-total-bytes">--</div>
+          <div style="font-size:10px;color:var(--text-dim);">bytes</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Failed</div>
+          <div style="font-family:var(--mono);font-size:14px;" id="dl-failed">--</div>
+          <div style="font-size:10px;color:var(--text-dim);">transfers</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Cmds</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--green);" id="ul-cmds">--</div>
+          <div style="font-size:10px;color:var(--text-dim);">acked</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Command Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Uplink / Commands</span>
+    </div>
+    <div class="panel-body">
+      <button class="btn full amber" onclick="sendCmd({cmd:'enter_safe_mode'}, this)">SAFE MODE</button>
+      <button class="btn full" onclick="sendCmd({cmd:'resume_normal'}, this)">RESUME NORMAL</button>
+      <button class="btn full" onclick="sendCmd({cmd:'status_request'}, this)">REQUEST STATUS</button>
+      <button class="btn full" onclick="sendCmd({cmd:'retry_downlink'}, this)">RETRY DOWNLINK</button>
+
+      <hr class="divider">
+
+      <div class="cmd-label">Retransmit image</div>
+      <div class="cmd-row">
+        <input id="in-retransmit" class="cmd-input" placeholder="pass1_img00_20260315_143000">
+        <button class="btn" onclick="cmdRetransmit(this)">SEND</button>
+      </div>
+
+      <div class="cmd-label">Priority cell (row, col)</div>
+      <div class="cmd-row">
+        <input id="in-pri-r" class="cmd-input" placeholder="R" style="max-width:42px;">
+        <input id="in-pri-c" class="cmd-input" placeholder="C" style="max-width:42px;">
+        <button class="btn" onclick="cmdPriorityCell(this)">SET</button>
+      </div>
+
+      <div class="cmd-label">Set current cell (row, col)</div>
+      <div class="cmd-row">
+        <input id="in-cell-r" class="cmd-input" placeholder="R" style="max-width:42px;">
+        <input id="in-cell-c" class="cmd-input" placeholder="C" style="max-width:42px;">
+        <button class="btn" onclick="cmdSetCell(this)">SET</button>
+      </div>
+
+      <div class="cmd-label">Adjust exposure (µs)</div>
+      <div class="cmd-row">
+        <input id="in-exposure" class="cmd-input" placeholder="e.g. 20000">
+        <button class="btn" onclick="cmdExposure(this)">SET</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Latest Image -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Latest Image</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <img id="img-latest" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-latest-ph" class="img-placeholder">NO IMAGE</div>
+    </div>
+  </div>
+
+  <!-- 6. Hazard Map -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Hazard Map</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <img id="img-hazard" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-hazard-ph" class="img-placeholder">NO DATA</div>
+    </div>
+  </div>
+
+  <!-- 7. Change Map — CORE DATA PRODUCT -->
+  <div class="panel core-panel col-span-2">
+    <div class="panel-header">
+      <span class="panel-title">Change Map</span>
+      <span class="panel-badge core">CORE DATA PRODUCT</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <div id="change-summary" style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:6px;display:none;"></div>
+      <img id="img-change" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-change-ph" class="img-placeholder">AWAITING SECOND PASS</div>
+    </div>
+  </div>
+
+  <!-- 8. Route Map -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Route Map</span>
+      <span class="panel-badge" id="route-status-badge">--</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <img id="img-route" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-route-ph" class="img-placeholder">NO DATA</div>
+    </div>
+  </div>
+
+  <!-- 9. Coverage Map (canvas) -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Coverage Grid</span>
+      <span id="coverage-pct-badge" class="panel-badge">0%</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <canvas id="coverage-canvas"></canvas>
+      <div class="note" style="margin-top:4px;">
+        <span class="dot dot-green"></span>Safe &nbsp;
+        <span class="dot dot-cyan"></span>Shadow &nbsp;
+        <span class="dot dot-amber"></span>Change &nbsp;
+        <span class="dot dot-red"></span>Hazard &nbsp;
+        <span class="dot dot-gray"></span>Unsurveyed
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. Mosaic -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Mosaic</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <img id="img-mosaic" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-mosaic-ph" class="img-placeholder">3+ CELLS NEEDED</div>
+      <p class="note" style="margin-top:4px;">One image per cell (highest quality). Gaps = unsurveyed.</p>
+    </div>
+  </div>
+
+  <!-- 11. Elevation Map -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Elevation Map</span>
+    </div>
+    <div class="panel-body" style="padding:6px;">
+      <img id="img-elevation" class="map-img" src="" alt="" style="display:none;">
+      <div id="img-elevation-ph" class="img-placeholder">NO SHADOW DATA</div>
+      <p class="note warn" style="margin-top:4px;">±15% height error at edges — flashlight divergence (documented)</p>
+    </div>
+  </div>
+
+  <!-- 12. Quality Log -->
+  <div class="panel col-span-2">
+    <div class="panel-header">
+      <span class="panel-title">Quality Log</span>
+      <span class="panel-badge" id="q-count-badge">0 images</span>
+    </div>
+    <div class="panel-body" style="padding:0;overflow:auto;max-height:220px;">
+      <table class="q-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>CubeSat Score</th>
+            <th>Ground OK</th>
+            <th>Notes</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="q-table-body">
+          <tr><td colspan="5" style="color:var(--text-dim);text-align:center;padding:10px;">No images received</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 13. Event Log (full width) -->
+  <div class="panel col-span-4">
+    <div class="panel-header">
+      <span class="panel-title">Event Log</span>
+      <span class="panel-badge" id="log-count-badge">0 lines</span>
+    </div>
+    <div class="panel-body" style="padding:0;max-height:180px;overflow:auto;" id="log-scroll">
+      <div id="event-log" style="padding:6px 10px;"></div>
+    </div>
+  </div>
+
+</div><!-- #grid -->
+
+<!-- LLM query bar at bottom (optional) -->
+<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg2);border-top:1px solid var(--border);">
+  <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);white-space:nowrap;">LLM QUERY</span>
+  <input id="llm-input" class="cmd-input" style="flex:1;" placeholder="Ask about mission state (requires local ollama)">
+  <button class="btn" onclick="sendLLM()">ASK</button>
+  <span id="llm-response" style="flex:2;font-family:var(--mono);font-size:10px;color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+</div>
+
+<script>
+// ─── Constants ──────────────────────────────────────────────────────────────
+const POLL_STATUS_MS  = 2000;
+const POLL_IMAGES_MS  = 3000;
+const POLL_COVERAGE_MS= 3000;
+const POLL_QUALITY_MS = 5000;
+const POLL_LOG_MS     = 3000;
+const DL_BUDGET_BYTES = 72000;  // THROTTLE_BYTES_PER_SEC * DOWNLINK_WINDOW_SEC
+
+// Hazard class → CSS colour
+const HAZARD_COLOURS = {
+  SAFE:       '#00c875',
+  MODERATE:   '#cccc00',
+  SHADOW:     '#0099cc',
+  HAZARD:     '#cc2200',
+  IMPASSABLE: '#660000',
+};
+
+// ─── Utility ────────────────────────────────────────────────────────────────
+function el(id) { return document.getElementById(id); }
+function setText(id, val) { const e = el(id); if (e) e.textContent = val ?? '--'; }
+function fmtNum(n, dec=1) { return (n != null && n !== '') ? Number(n).toFixed(dec) : '--'; }
+
+function flashBtn(btn, ok) {
+  btn.classList.add(ok ? 'ok' : 'fail');
+  setTimeout(() => btn.classList.remove('ok', 'fail'), 2500);
+}
+
+// Cache-busted image update — only if server returns 200
+async function updateImg(imgId, phId, url) {
+  const img = el(imgId);
+  const ph  = el(phId);
+  try {
+    const r = await fetch(url + '?t=' + Date.now());
+    if (r.status === 204) return;  // not ready yet
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const src  = URL.createObjectURL(blob);
+    img.onload = () => { img.style.display = 'block'; if (ph) ph.style.display = 'none'; };
+    img.src = src;
+  } catch(e) { /* network blip — keep last image */ }
+}
+
+// ─── Status poll ────────────────────────────────────────────────────────────
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+
+    // Connection indicator
+    el('conn-dot').className = 'live';
+    el('conn-label').textContent = 'LIVE';
+    setText('server-time', d.server_time ? d.server_time.replace('T',' ').slice(0,19) + ' UTC' : '--');
+
+    const m = d.mission || {};
+    const t = d.telemetry || {};
+
+    // ── Mission Status panel ──
+    const stateStr = t.state || '--';
+    setText('s-state', stateStr);
+    el('sat-state-badge').textContent = stateStr;
+    setText('s-pass',     m.total_passes);
+    setText('s-images',   m.total_images_received);
+    const corrupt = m.total_images_corrupted ?? 0;
+    const sCorrupt = el('s-corrupt');
+    sCorrupt.textContent = corrupt;
+    sCorrupt.className = 'v' + (corrupt > 0 ? ' warn' : '');
+    const cov = m.coverage || {};
+    setText('s-coverage', cov.pct != null ? `${cov.cells_filled}/${cov.cells_total} (${cov.pct}%)` : '--');
+    const route = m.route || {};
+    const sRoute = el('s-route');
+    sRoute.textContent = route.status || '--';
+    sRoute.className = 'v' + (route.status === 'no viable route' ? ' alert' : '');
+    const ch = m.changes || {};
+    setText('s-changes', ch.total_events != null ? `${ch.total_events} event(s) · ${fmtNum(ch.total_changed_area_cm2,1)} cm²` : '--');
+    setText('s-updated',  m.last_updated ? m.last_updated.replace('T',' ').slice(0,19) : '--');
+
+    // ── Telemetry panel ──
+    setText('t-state',   t.state);
+    const roll  = t.roll_deg  != null ? fmtNum(t.roll_deg,1)  + '°' : '--';
+    const pitch = t.pitch_deg != null ? fmtNum(t.pitch_deg,1) + '°' : '--';
+    setText('t-roll',    roll);
+    setText('t-pitch',   pitch);
+    const temp = t.cpu_temp_c;
+    const tEl  = el('t-temp');
+    tEl.textContent = temp != null ? fmtNum(temp,1) + ' °C' : '--';
+    tEl.className   = 'v' + (temp > 80 ? ' alert' : temp > 70 ? ' warn' : '');
+    setText('t-storage', t.storage_used_pct != null ? fmtNum(t.storage_used_pct,0) + '%' : '--');
+    setText('t-queue',   t.queue_size);
+    setText('t-nadir',   t.nadir_locked != null ? (t.nadir_locked ? 'LOCKED' : 'FREE') : '--');
+    setText('t-uptime',  t.uptime_sec   != null ? fmtFmt(t.uptime_sec) : '--');
+
+    // ── Downlink panel ──
+    const dl = m.downlink || {};
+    const totalBytes = dl.total_bytes || 0;
+    const pct = Math.min(100, totalBytes / DL_BUDGET_BYTES * 100).toFixed(1);
+    el('dl-bar').style.width = pct + '%';
+    setText('dl-bytes',       `${totalBytes.toLocaleString()} / ${DL_BUDGET_BYTES.toLocaleString()}`);
+    setText('dl-rate',        dl.effective_rate_bps != null ? fmtNum(dl.effective_rate_bps,0) : '--');
+    el('dl-rate-badge').textContent = (dl.effective_rate_bps != null ? fmtNum(dl.effective_rate_bps,0) : '--') + ' B/s';
+    setText('dl-total-bytes', totalBytes.toLocaleString());
+    const failed = dl.failed_transfers ?? 0;
+    const dlFailed = el('dl-failed');
+    dlFailed.textContent = failed;
+    dlFailed.className = 'v' + (failed > 0 ? ' warn' : '');
+    const ul = m.uplink || {};
+    setText('ul-cmds', ul.commands_acked != null ? `${ul.commands_acked}/${ul.commands_sent}` : '--');
+
+    // ── Change map summary ──
+    if (ch.total_events > 0) {
+      const cSumEl = el('change-summary');
+      cSumEl.style.display = 'block';
+      cSumEl.textContent = `${ch.total_events} change event(s) detected · ${fmtNum(ch.total_changed_area_cm2,1)} cm² total · largest: ${fmtNum(ch.largest_change_cm2,1)} cm²`;
+      el('img-change').classList.add('change-active');
+    }
+
+    // ── Route badge ──
+    const routeBadge = el('route-status-badge');
+    if (route.status === 'found') {
+      routeBadge.textContent = `FOUND · ${route.path_length} cells`;
+      routeBadge.style.borderColor = 'var(--green)';
+      routeBadge.style.color = 'var(--green)';
+    } else if (route.status === 'no viable route') {
+      routeBadge.textContent = 'NO VIABLE ROUTE';
+      routeBadge.style.borderColor = 'var(--red)';
+      routeBadge.style.color = 'var(--red)';
+    }
+
+    // ── Coverage badge ──
+    el('coverage-pct-badge').textContent = cov.pct != null ? cov.pct + '%' : '0%';
+
+  } catch(e) {
+    el('conn-dot').className = '';
+    el('conn-label').textContent = 'OFFLINE';
+  }
+}
+
+function fmtFmt(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's';
+}
+
+// ─── Coverage canvas ─────────────────────────────────────────────────────────
+async function pollCoverage() {
+  try {
+    const r = await fetch('/api/coverage');
+    if (!r.ok) return;
+    const d = await r.json();
+    drawCoverage(d.grid, d.rows, d.cols);
+  } catch(e) {}
+}
+
+function drawCoverage(grid, rows, cols) {
+  const canvas = el('coverage-canvas');
+  const cell   = Math.floor(canvas.parentElement.offsetWidth / cols) || 24;
+  canvas.width  = cell * cols;
+  canvas.height = cell * rows;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const row of grid) {
+    for (const cell_data of row) {
+      const r = cell_data.row, c = cell_data.col;
+      const x = c * cell, y = r * cell;
+      const cls = cell_data.hazard_class;
+
+      // Fill
+      if (cls === 'SAFE' || (!cell_data.has_change && cls)) {
+        ctx.fillStyle = HAZARD_COLOURS[cls] || '#222';
+      } else {
+        ctx.fillStyle = '#222';
+      }
+
+      // Surveyed vs not
+      const surveyed = cls && cls !== 'SAFE' || cell_data.cost > 1 || cell_data.has_change;
+      // Actually: any cell that has been classified is surveyed
+      // We'll treat cost > 0 as surveyed (all cells start at COST_SAFE=1)
+      // so we check has_change or cost != COST_SAFE
+      ctx.fillStyle = HAZARD_COLOURS[cls] ? HAZARD_COLOURS[cls] : '#1a1a1a';
+      ctx.fillRect(x, y, cell - 1, cell - 1);
+
+      // Orange border if change detected
+      if (cell_data.has_change) {
+        ctx.strokeStyle = '#ff9500';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, cell - 3, cell - 3);
+      }
+
+      // Cell label
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = `${Math.max(7, cell * 0.3)}px monospace`;
+      ctx.fillText(`${r},${c}`, x + 2, y + cell - 3);
+    }
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#2a3040';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= rows; i++) {
+    ctx.beginPath(); ctx.moveTo(0, i * cell); ctx.lineTo(cols * cell, i * cell); ctx.stroke();
+  }
+  for (let j = 0; j <= cols; j++) {
+    ctx.beginPath(); ctx.moveTo(j * cell, 0); ctx.lineTo(j * cell, rows * cell); ctx.stroke();
+  }
+}
+
+// ─── Quality log ─────────────────────────────────────────────────────────────
+async function pollQuality() {
+  try {
+    const r = await fetch('/api/quality_log');
+    if (!r.ok) return;
+    const d = await r.json();
+    const entries = d.entries || [];
+    el('q-count-badge').textContent = entries.length + ' images';
+    const tbody = el('q-table-body');
+    if (!entries.length) return;
+    tbody.innerHTML = '';
+    for (const e of entries) {
+      const tr = document.createElement('tr');
+      const gOk = e.ground_passed;
+      tr.innerHTML = `
+        <td title="${e.filename}">${e.filename || '--'}</td>
+        <td>${e.cubesat_score != null ? Number(e.cubesat_score).toFixed(2) : '--'}</td>
+        <td class="${gOk ? 'pass-ok' : 'pass-fail'}">${gOk ? '✓' : '✗'}</td>
+        <td title="${(e.notes||[]).join(', ')}">${(e.notes||[]).join(', ') || '—'}</td>
+        <td>${e.status || '--'}</td>`;
+      tbody.appendChild(tr);
+    }
+    // Scroll to bottom
+    const scroll = tbody.closest('.panel-body');
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  } catch(e) {}
+}
+
+// ─── Event log ───────────────────────────────────────────────────────────────
+async function pollLog() {
+  try {
+    const r = await fetch('/api/log');
+    if (!r.ok) return;
+    const d = await r.json();
+    const lines = d.lines || [];
+    el('log-count-badge').textContent = lines.length + ' lines';
+    const div = el('event-log');
+    div.innerHTML = lines.map(line => {
+      let cls = 'line-info';
+      if (/ERROR|CRITICAL/.test(line)) cls = 'line-err';
+      else if (/WARNING/.test(line))   cls = 'line-warn';
+      return `<span class="${cls}">${escHtml(line)}\n</span>`;
+    }).join('');
+    // Auto-scroll
+    const scroll = el('log-scroll');
+    scroll.scrollTop = scroll.scrollHeight;
+  } catch(e) {}
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Command helpers ─────────────────────────────────────────────────────────
+async function sendCmd(body, btn) {
+  try {
+    const r = await fetch('/api/command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (btn) flashBtn(btn, d.success);
+  } catch(e) {
+    if (btn) flashBtn(btn, false);
+  }
+}
+
+function cmdRetransmit(btn) {
+  const id = el('in-retransmit').value.trim();
+  if (!id) return;
+  sendCmd({cmd: 'retransmit', image_id: id}, btn);
+}
+
+function cmdPriorityCell(btn) {
+  const r = parseInt(el('in-pri-r').value);
+  const c = parseInt(el('in-pri-c').value);
+  if (isNaN(r) || isNaN(c)) return;
+  sendCmd({cmd: 'priority_cell', row: r, col: c}, btn);
+}
+
+function cmdSetCell(btn) {
+  const r = parseInt(el('in-cell-r').value);
+  const c = parseInt(el('in-cell-c').value);
+  if (isNaN(r) || isNaN(c)) return;
+  sendCmd({cmd: 'set_cell', row: r, col: c}, btn);
+}
+
+function cmdExposure(btn) {
+  const us = parseInt(el('in-exposure').value);
+  if (isNaN(us)) return;
+  sendCmd({cmd: 'adjust_exposure', exposure_us: us}, btn);
+}
+
+// ─── LLM ─────────────────────────────────────────────────────────────────────
+async function sendLLM() {
+  const q = el('llm-input').value.trim();
+  if (!q) return;
+  el('llm-response').textContent = 'Querying…';
+  try {
+    const r = await fetch('/api/llm_query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q}),
+    });
+    const d = await r.json();
+    el('llm-response').textContent = d.response || '--';
+  } catch(e) {
+    el('llm-response').textContent = 'LLM error: ' + e;
+  }
+}
+
+// ─── Poll loops ──────────────────────────────────────────────────────────────
+function pollImages() {
+  updateImg('img-latest',    'img-latest-ph',    '/api/latest_image');
+  updateImg('img-hazard',    'img-hazard-ph',    '/api/hazard_map');
+  updateImg('img-change',    'img-change-ph',    '/api/change_map');
+  updateImg('img-route',     'img-route-ph',     '/api/route_map');
+  updateImg('img-mosaic',    'img-mosaic-ph',    '/api/mosaic');
+  updateImg('img-elevation', 'img-elevation-ph', '/api/elevation');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+pollStatus();
+pollImages();
+pollCoverage();
+pollQuality();
+pollLog();
+
+setInterval(pollStatus,   POLL_STATUS_MS);
+setInterval(pollImages,   POLL_IMAGES_MS);
+setInterval(pollCoverage, POLL_COVERAGE_MS);
+setInterval(pollQuality,  POLL_QUALITY_MS);
+setInterval(pollLog,      POLL_LOG_MS);
+</script>
+</body>
+</html>

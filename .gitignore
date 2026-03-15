@@ -26,3 +26,11 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# YOLO models and training data
+ground_station/models/*.pt
+ground_station/models/.roboflow_key
+ground_station/models/roboflow_dataset/
+ground_station/models/training/
+ground_station/runs/
+*.pt

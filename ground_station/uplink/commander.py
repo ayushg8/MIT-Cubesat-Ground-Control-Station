@@ -113,3 +113,15 @@ class Commander:
     def retry_downlink(self) -> bool:
         """Reset the CubeSat's consecutive-failure counter to resume downlink."""
         return self.send_command({"cmd": "retry_downlink"})
+
+    def start_pass(self) -> bool:
+        """Transition CubeSat from WAITING → IMAGING (begin a new imaging pass)."""
+        return self.send_command({"cmd": "start_pass"})
+
+    def end_pass(self) -> bool:
+        """Transition CubeSat from IMAGING → PROCESSING (stop capture, begin downlink)."""
+        return self.send_command({"cmd": "end_pass"})
+
+    def set_grid_cell(self, row: int, col: int) -> bool:
+        """Set the next grid cell to image in real time during a pass."""
+        return self.send_command({"cmd": "cell", "row": row, "col": col})

@@ -332,6 +332,48 @@ def api_command():
     return jsonify({"success": success})
 
 
+@app.route("/api/start_pass", methods=["POST"])
+def api_start_pass():
+    """Transition CubeSat WAITING → IMAGING."""
+    if _commander is None:
+        return jsonify({"success": False, "error": "Commander not initialised"}), 503
+    success = _commander.start_pass()
+    if _mission_state:
+        _mission_state.record_command(acked=success)
+    logger.info(f"start_pass → {'ACK' if success else 'FAIL'}")
+    return jsonify({"success": success})
+
+
+@app.route("/api/end_pass", methods=["POST"])
+def api_end_pass():
+    """Transition CubeSat IMAGING → PROCESSING."""
+    if _commander is None:
+        return jsonify({"success": False, "error": "Commander not initialised"}), 503
+    success = _commander.end_pass()
+    if _mission_state:
+        _mission_state.record_command(acked=success)
+    logger.info(f"end_pass → {'ACK' if success else 'FAIL'}")
+    return jsonify({"success": success})
+
+
+@app.route("/api/set_cell", methods=["POST"])
+def api_set_cell():
+    """Set the next grid cell to image. Body: {"row": R, "col": C}."""
+    if _commander is None:
+        return jsonify({"success": False, "error": "Commander not initialised"}), 503
+    try:
+        body = request.get_json(force=True) or {}
+        row = int(body["row"])
+        col = int(body["col"])
+    except (KeyError, ValueError, TypeError) as e:
+        return jsonify({"success": False, "error": f"Bad parameters: {e}"}), 400
+    success = _commander.set_grid_cell(row, col)
+    if _mission_state:
+        _mission_state.record_command(acked=success)
+    logger.info(f"set_cell ({row},{col}) → {'ACK' if success else 'FAIL'}")
+    return jsonify({"success": success})
+
+
 @app.route("/api/llm_query", methods=["POST"])
 def api_llm_query():
     """Optional: send a question to local ollama with mission_state as context."""

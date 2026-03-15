@@ -66,6 +66,15 @@ NACK = b'\x15'  # ASCII NAK — GCS sends this if MD5 mismatch or decode failure
 #
 #   {"cmd": "retry_downlink"}
 #       → Reset consecutive_failures counter, resume downlink attempts
+#
+#   {"cmd": "start_pass"}
+#       → Transition CubeSat from WAITING → IMAGING (begin a new imaging pass)
+#
+#   {"cmd": "end_pass"}
+#       → Transition CubeSat from IMAGING → PROCESSING (stop capture, begin downlink)
+#
+#   {"cmd": "cell", "row": R, "col": C}
+#       → Set the next grid cell to image (replaces set_cell for real-time control)
 
 # === FILE NAMING CONVENTION ===
 #

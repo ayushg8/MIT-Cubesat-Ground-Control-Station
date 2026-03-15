@@ -390,6 +390,136 @@ input.cmd-input:focus { border-color: var(--cyan); }
   margin-bottom: 6px;
 }
 
+/* ── Mission Control bar ─────────────────────────────────────────────────── */
+#mission-control {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: var(--bg2);
+  border-bottom: 2px solid var(--border2);
+}
+#mc-state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 110px;
+}
+#mc-state-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+#mc-state-value {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  transition: color 0.3s;
+}
+#mc-pass-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+#mc-pass-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+#mc-pass-value {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--text-bright);
+}
+.mc-divider {
+  width: 1px;
+  height: 40px;
+  background: var(--border2);
+  flex-shrink: 0;
+}
+.mc-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  border: 2px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+.mc-btn.active-start {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: #001a22;
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--cyan-dim);
+}
+.mc-btn.active-start:hover {
+  background: #002d3a;
+  box-shadow: 0 0 16px var(--cyan);
+}
+.mc-btn.active-end {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: #1a0e00;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--amber-dim);
+}
+.mc-btn.active-end:hover {
+  background: #2d1a00;
+}
+#mc-cell-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#mc-cell-group label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.mc-num-input {
+  width: 44px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 6px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s, color 0.2s;
+}
+.mc-num-input.active-input {
+  border-color: var(--cyan);
+  color: var(--text-bright);
+}
+#mc-feedback {
+  font-family: var(--mono);
+  font-size: 10px;
+  min-width: 80px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
+#mc-feedback.ok   { color: var(--green); }
+#mc-feedback.fail { color: var(--red); }
+
 /* ── Hazard quadrant table ───────────────────────────────────────────────── */
 .quad-table {
   width: 100%;
@@ -425,6 +555,48 @@ input.cmd-input:focus { border-color: var(--cyan); }
     <span><span id="conn-dot"></span><span id="conn-label" style="font-size:11px;color:var(--text-dim);">CONNECTING</span></span>
     <span id="server-time" style="font-family:var(--mono);font-size:11px;">--</span>
   </div>
+</div>
+
+<!-- ── Mission Control bar ────────────────────────────────────────────── -->
+<div id="mission-control">
+
+  <!-- State indicator -->
+  <div id="mc-state-block">
+    <div id="mc-state-label">Sat State</div>
+    <div id="mc-state-value">--</div>
+  </div>
+
+  <!-- Pass counter -->
+  <div id="mc-pass-block">
+    <div id="mc-pass-label">Pass</div>
+    <div id="mc-pass-value">--</div>
+  </div>
+
+  <div class="mc-divider"></div>
+
+  <!-- START PASS -->
+  <button id="mc-btn-start" class="mc-btn" disabled
+          onclick="mcStartPass(this)">▶ START PASS</button>
+
+  <!-- END PASS -->
+  <button id="mc-btn-end" class="mc-btn" disabled
+          onclick="mcEndPass(this)">■ END PASS</button>
+
+  <div class="mc-divider"></div>
+
+  <!-- Grid cell selector -->
+  <div id="mc-cell-group">
+    <label>Cell</label>
+    <input id="mc-row" class="mc-num-input" type="number" min="0" max="7" value="0" disabled>
+    <span style="font-family:var(--mono);color:var(--text-dim);">,</span>
+    <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled>
+    <button id="mc-btn-cell" class="mc-btn" disabled
+            onclick="mcSetCell(this)">SET CELL</button>
+  </div>
+
+  <!-- Feedback -->
+  <div id="mc-feedback"></div>
+
 </div>
 
 <!-- ── Main grid ──────────────────────────────────────────────────────── -->
@@ -869,6 +1041,9 @@ async function pollStatus() {
     // ── Change→Route impact check ──
     if (_lastRouteData) checkChangeRouteImpact(d, _lastRouteData);
 
+    // ── Mission Control panel ──
+    updateMissionControl(t.state, m.total_passes);
+
   } catch(e) {
     el('conn-dot').className = '';
     el('conn-label').textContent = 'OFFLINE';
@@ -880,6 +1055,104 @@ function fmtFmt(sec) {
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
   return (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's';
+}
+
+// ─── Mission Control ─────────────────────────────────────────────────────────
+const _MC_STATE_COLOURS = {
+  WAITING:    'var(--cyan)',
+  IMAGING:    '#00ff88',
+  PROCESSING: 'var(--amber)',
+  DOWNLINK:   'var(--green)',
+  IDLE:       'var(--text-dim)',
+  SAFE_MODE:  'var(--red)',
+};
+
+function updateMissionControl(state, pass) {
+  const stateEl  = el('mc-state-value');
+  const passEl   = el('mc-pass-value');
+  const btnStart = el('mc-btn-start');
+  const btnEnd   = el('mc-btn-end');
+  const btnCell  = el('mc-btn-cell');
+  const rowInput = el('mc-row');
+  const colInput = el('mc-col');
+
+  // State display
+  const s = (state || '').toUpperCase();
+  stateEl.textContent = s || '--';
+  stateEl.style.color = _MC_STATE_COLOURS[s] || 'var(--text-dim)';
+
+  // Pass counter
+  passEl.textContent = (pass != null && pass !== '') ? pass : '--';
+
+  // Button states
+  const isWaiting = s === 'WAITING';
+  const isImaging = s === 'IMAGING';
+
+  // START PASS — only active when WAITING
+  btnStart.disabled = !isWaiting;
+  btnStart.classList.toggle('active-start', isWaiting);
+
+  // END PASS — only active when IMAGING
+  btnEnd.disabled = !isImaging;
+  btnEnd.classList.toggle('active-end', isImaging);
+
+  // SET CELL — only active when IMAGING
+  btnCell.disabled = !isImaging;
+  btnCell.classList.toggle('active-start', isImaging);
+  rowInput.disabled = !isImaging;
+  colInput.disabled = !isImaging;
+  rowInput.classList.toggle('active-input', isImaging);
+  colInput.classList.toggle('active-input', isImaging);
+}
+
+function _mcFeedback(msg, ok) {
+  const fb = el('mc-feedback');
+  fb.textContent = msg;
+  fb.className = ok ? 'ok' : 'fail';
+  setTimeout(() => { fb.textContent = ''; fb.className = ''; }, 3000);
+}
+
+async function mcStartPass(btn) {
+  try {
+    const r = await fetch('/api/start_pass', { method: 'POST' });
+    const d = await r.json();
+    _mcFeedback(d.success ? 'PASS STARTED' : 'FAILED', d.success);
+    if (btn) flashBtn(btn, d.success);
+  } catch(e) {
+    _mcFeedback('ERROR', false);
+  }
+}
+
+async function mcEndPass(btn) {
+  try {
+    const r = await fetch('/api/end_pass', { method: 'POST' });
+    const d = await r.json();
+    _mcFeedback(d.success ? 'PASS ENDED' : 'FAILED', d.success);
+    if (btn) flashBtn(btn, d.success);
+  } catch(e) {
+    _mcFeedback('ERROR', false);
+  }
+}
+
+async function mcSetCell(btn) {
+  const row = parseInt(el('mc-row').value);
+  const col = parseInt(el('mc-col').value);
+  if (isNaN(row) || isNaN(col) || row < 0 || row > 7 || col < 0 || col > 7) {
+    _mcFeedback('BAD COORDS', false);
+    return;
+  }
+  try {
+    const r = await fetch('/api/set_cell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row, col }),
+    });
+    const d = await r.json();
+    _mcFeedback(d.success ? `CELL ${row},${col} SET` : 'FAILED', d.success);
+    if (btn) flashBtn(btn, d.success);
+  } catch(e) {
+    _mcFeedback('ERROR', false);
+  }
 }
 
 // ─── Routes poll ─────────────────────────────────────────────────────────────

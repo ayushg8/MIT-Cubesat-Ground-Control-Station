@@ -585,6 +585,24 @@ input.active-input { border-color: var(--cyan); }
     </div>
   </div>
 
+  <!-- 4b. ML OBJECT DETECTION -->
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">ML Object Detection</span>
+      <span class="pnl-badge" id="yolo-model-badge" style="background:var(--panel);color:var(--dim);">--</span>
+    </div>
+    <div class="pnl-body">
+      <div id="yolo-summary" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px;">
+        No detections yet
+      </div>
+      <div id="yolo-image-wrap" style="position:relative;">
+        <img id="img-yolo" class="map-img" src="" alt="" style="display:none;">
+        <div id="img-yolo-ph" class="img-placeholder" style="min-height:60px;">NO ML DATA</div>
+      </div>
+      <div id="yolo-detections-list" style="margin-top:6px;font-family:var(--mono);font-size:10px;max-height:120px;overflow-y:auto;"></div>
+    </div>
+  </div>
+
   <!-- 5. DOWNLINK PROGRESS -->
   <div class="pnl">
     <div class="pnl-hdr">
@@ -1733,6 +1751,90 @@ async function pollShadow() {
   } catch(e) {}
 }
 
+async function pollYolo() {
+  try {
+    // Fetch detections data
+    const r = await fetch('/api/yolo_detections');
+    if (!r.ok) return;
+    const d = await r.json();
+    const summary = d.summary || {};
+    const fused = d.fused_classifications || [];
+
+    // Update model badge
+    const badge = el('yolo-model-badge');
+    if (badge) {
+      const st = el('yolo-status-state');
+      const m = d.summary || {};
+      // Get model from mission state
+      const sr = await fetch('/api/status');
+      const sd = await sr.json();
+      const ml = (sd.mission || {}).ml_detection || {};
+      const model = ml.model || 'none';
+      if (model === 'lunar_yolov8') {
+        badge.textContent = 'LUNAR';
+        badge.style.background = '#00d4ff33';
+        badge.style.color = '#00d4ff';
+      } else if (model.includes('coco')) {
+        badge.textContent = 'COCO';
+        badge.style.background = '#ff990033';
+        badge.style.color = '#ff9900';
+      } else {
+        badge.textContent = '--';
+      }
+    }
+
+    // Update summary text
+    const sumEl = el('yolo-summary');
+    if (sumEl) {
+      const total = summary.total_detections || 0;
+      const craters = summary.craters_detected || 0;
+      const boulders = summary.boulders_detected || 0;
+      const agreeRate = summary.cv_agreement_rate != null ? (summary.cv_agreement_rate * 100).toFixed(0) : '--';
+      if (total > 0) {
+        sumEl.innerHTML = `<span style="color:var(--bright);">YOLO:</span> ${craters} crater(s), ${boulders} boulder(s) ` +
+          `| <span style="color:var(--bright);">CV Agreement:</span> ${agreeRate}%`;
+        sumEl.style.color = 'var(--text)';
+      } else {
+        sumEl.textContent = 'No detections yet';
+        sumEl.style.color = 'var(--dim)';
+      }
+    }
+
+    // Update annotated image
+    const imgEl = el('img-yolo');
+    const phEl = el('img-yolo-ph');
+    const imgR = await fetch('/api/yolo_annotated');
+    if (imgR.ok && imgEl) {
+      const blob = await imgR.blob();
+      imgEl.src = URL.createObjectURL(blob);
+      imgEl.style.display = '';
+      if (phEl) phEl.style.display = 'none';
+    }
+
+    // Build detections list
+    const listEl = el('yolo-detections-list');
+    if (listEl && fused.length > 0) {
+      let html = '';
+      for (const f of fused) {
+        const cell = f.cell || [];
+        const agree = f.agreement;
+        const agreeIcon = agree ? '<span style="color:#44cc44;">&#10003;</span>' : '<span style="color:#ff4444;">&#10007;</span>';
+        const dets = (f.yolo_detections || []).map(d =>
+          `${d.class} ${(d.confidence * 100).toFixed(0)}%`
+        ).join(', ') || 'none';
+        html += `<div style="margin-bottom:3px;border-bottom:1px solid var(--border);padding-bottom:2px;">` +
+          `<span style="color:var(--accent);">(${cell[0]},${cell[1]})</span> ` +
+          `CV: <b>${f.classical_classification}</b> → Fused: <b style="color:var(--bright);">${f.fused_classification}</b> ` +
+          `(${(f.fused_confidence * 100).toFixed(0)}%) ` +
+          `${agreeIcon} | ML: ${dets}</div>`;
+      }
+      listEl.innerHTML = html;
+    } else if (listEl) {
+      listEl.innerHTML = '';
+    }
+  } catch(e) {}
+}
+
 function renderChangeDetection(data) {
   const events = data.events || [];
   const tabsEl = el('change-cell-tabs');
@@ -2296,6 +2398,7 @@ pollRoutes();
 pollCostHeatmap();
 pollChanges();
 pollShadow();
+pollYolo();
 
 setInterval(pollStatus,      POLL_STATUS_MS);
 setInterval(pollImages,      POLL_IMAGES_MS);
@@ -2306,6 +2409,7 @@ setInterval(pollRoutes,      POLL_ROUTES_MS);
 setInterval(pollCostHeatmap, POLL_HEATMAP_MS);
 setInterval(pollChanges,     POLL_CHANGES_MS);
 setInterval(pollShadow,      POLL_HEATMAP_MS);
+setInterval(pollYolo,        POLL_HEATMAP_MS);
 
 // Auto-discover CubeSat on page load
 mcDiscover();

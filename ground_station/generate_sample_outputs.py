@@ -346,11 +346,129 @@ def generate_mission_state():
             "commands_sent": 6,
             "commands_acked": 6,
         },
+        "ml_detection": {
+            "model": "coco_yolov8n_fallback",
+            "total_detections": 5,
+            "craters_detected": 2,
+            "boulders_detected": 3,
+            "cv_agreement_rate": 0.875,
+            "detections_per_cell": {
+                "2,3": [{"class": "crater", "conf": 0.82}, {"class": "boulder", "conf": 0.67}],
+                "5,5": [{"class": "boulder", "conf": 0.74}],
+                "0,2": [{"class": "crater", "conf": 0.58}, {"class": "boulder", "conf": 0.51}],
+            },
+        },
     }
 
     with open(config.MISSION_STATE_FILE, "w") as f:
         json.dump(data, f, indent=2)
     print("  mission_state.json")
+
+
+def generate_yolo_detections():
+    """Generate sample YOLO detection data and annotated images."""
+    os.makedirs(os.path.join(PROCESSED, "yolo_detections"), exist_ok=True)
+
+    detections_per_cell = {
+        "2,3": [
+            {"class": "crater", "confidence": 0.82, "bbox": [95, 60, 170, 130], "area_px": 5250, "center": [132, 95], "original_class": "bowl"},
+            {"class": "boulder", "confidence": 0.67, "bbox": [200, 150, 240, 190], "area_px": 1600, "center": [220, 170], "original_class": "sports ball"},
+        ],
+        "5,5": [
+            {"class": "boulder", "confidence": 0.74, "bbox": [140, 100, 195, 155], "area_px": 3025, "center": [167, 127], "original_class": "orange"},
+        ],
+        "0,2": [
+            {"class": "crater", "confidence": 0.58, "bbox": [50, 30, 130, 100], "area_px": 5600, "center": [90, 65], "original_class": "cup"},
+            {"class": "boulder", "confidence": 0.51, "bbox": [230, 180, 270, 210], "area_px": 1200, "center": [250, 195], "original_class": "apple"},
+        ],
+    }
+
+    fused_classifications = [
+        {
+            "cell": [2, 3],
+            "classical_classification": "HAZARD",
+            "classical_confidence": 0.78,
+            "yolo_detections": [{"class": "crater", "confidence": 0.82}, {"class": "boulder", "confidence": 0.67}],
+            "fused_classification": "HAZARD",
+            "fused_confidence": 0.95,
+            "agreement": True,
+        },
+        {
+            "cell": [5, 5],
+            "classical_classification": "HAZARD",
+            "classical_confidence": 0.72,
+            "yolo_detections": [{"class": "boulder", "confidence": 0.74}],
+            "fused_classification": "HAZARD",
+            "fused_confidence": 0.88,
+            "agreement": True,
+        },
+        {
+            "cell": [0, 2],
+            "classical_classification": "MODERATE",
+            "classical_confidence": 0.65,
+            "yolo_detections": [{"class": "crater", "confidence": 0.58}, {"class": "boulder", "confidence": 0.51}],
+            "fused_classification": "MODERATE",
+            "fused_confidence": 0.75,
+            "agreement": True,
+        },
+    ]
+
+    data = {
+        "detections_per_cell": detections_per_cell,
+        "fused_classifications": fused_classifications,
+        "summary": {
+            "total_detections": 5,
+            "craters_detected": 2,
+            "boulders_detected": 3,
+            "cv_agreement_rate": 0.875,
+            "cells_analyzed": 3,
+        },
+    }
+
+    with open(os.path.join(PROCESSED, "yolo_detections.json"), "w") as f:
+        json.dump(data, f, indent=2)
+    print("  yolo_detections.json")
+
+    # Generate a sample annotated image
+    _generate_sample_yolo_image(detections_per_cell)
+
+
+def _generate_sample_yolo_image(detections_per_cell):
+    """Create a sample YOLO-annotated image."""
+    try:
+        import numpy as np
+        import cv2
+    except ImportError:
+        print("    (skipping YOLO annotated image — opencv not available)")
+        return
+
+    np.random.seed(99)
+    base = np.full((240, 320, 3), (180, 170, 140), dtype=np.uint8)
+    noise = np.random.randint(-15, 15, base.shape, dtype=np.int16)
+    img = np.clip(base.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+    # Grid tape
+    cv2.line(img, (0, 120), (320, 120), (60, 60, 60), 2)
+    cv2.line(img, (160, 0), (160, 240), (60, 60, 60), 2)
+
+    # Draw detections from cell (2,3) as example
+    colors = {"crater": (0, 0, 255), "boulder": (0, 165, 255)}
+    for det in detections_per_cell.get("2,3", []):
+        x1, y1, x2, y2 = det["bbox"]
+        color = colors.get(det["class"], (200, 200, 200))
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        label = f"{det['class']} {det['confidence']:.0%}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.rectangle(img, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+        cv2.putText(img, label, (x1 + 2, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+    cv2.putText(img, "COCO YOLO (fallback)", (5, 18),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 255), 1, cv2.LINE_AA)
+
+    out_dir = os.path.join(PROCESSED, "yolo_detections")
+    cv2.imwrite(os.path.join(out_dir, "sample_cell2_3_yolo.png"), img)
+    print("    sample YOLO annotated image")
 
 
 if __name__ == "__main__":
@@ -359,5 +477,6 @@ if __name__ == "__main__":
     generate_routes()
     generate_changes()
     generate_shadow_data()
+    generate_yolo_detections()
     generate_mission_state()
     print("Done. Restart the GCS server to see the data on the dashboard.")

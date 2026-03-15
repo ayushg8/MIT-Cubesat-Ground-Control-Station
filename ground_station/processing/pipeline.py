@@ -5,9 +5,15 @@ from __future__ import annotations
 # Runs each stage in order. If any stage raises, that stage is skipped for this
 # image; the pipeline continues with the remaining stages and with future images.
 #
+# Dual-detection architecture:
+#   1. Classical CV (shadow, hazard, change, mosaic, route) — grid-level
+#   2. YOLOv8 ML detection — object-level bounding boxes for craters/boulders
+#   3. Fusion — combines both for higher confidence classification
+#
 # Stage order:
 #   1. ShadowDetector
 #   2. HazardClassifier
+#   2b. YOLODetector + Fusion (ML object detection + CV/ML agreement)
 #   3. ChangeDetector  (only if same cell was imaged in a prior pass)
 #   4. MosaicBuilder   (only if 3+ cells now covered)
 #   5. RoutePlanner
@@ -28,6 +34,7 @@ from processing.mission_state import MissionState
 from processing.mosaic_builder import MosaicBuilder
 from processing.route_planner import RoutePlanner
 from processing.shadow_detector import ShadowDetector
+from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +55,14 @@ class Pipeline:
 
         self._shadow_detector    = ShadowDetector()
         self._hazard_classifier  = HazardClassifier()
+        self._yolo_detector      = YOLODetector()
         self._change_detector    = ChangeDetector()
         self._mosaic_builder     = MosaicBuilder()
         self._route_planner      = RoutePlanner()
+
+        # YOLO detection state (accumulated across images)
+        self._yolo_detections: dict = {}   # {"R,C": [detection_dicts]}
+        self._fused_results: list = []     # [fused_classification_dicts]
 
         # cost_grid: 8×8 numpy int array, one cost per cell.
         # Starts at COST_SAFE for unvisited cells.
@@ -149,6 +161,70 @@ class Pipeline:
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] hazard_classifier FAILED: {e}", exc_info=True)
+
+        # ── 2b. YOLO ML detection + Fusion ──
+        try:
+            yolo_dets = self._yolo_detector.detect(image_path)
+
+            # Save annotated image
+            yolo_out_dir = os.path.join(config.PROCESSED_DIR, "yolo_detections")
+            os.makedirs(yolo_out_dir, exist_ok=True)
+            annotated_path = os.path.join(yolo_out_dir, f"{os.path.splitext(basename)[0]}_yolo.png")
+            if yolo_dets:
+                self._yolo_detector.detect_and_annotate(image_path, annotated_path)
+
+            # Store per-cell detections
+            cell_key = self._cell_key(grid_cell)
+            self._yolo_detections[cell_key] = yolo_dets
+
+            # Fuse with classical classification
+            classical_class = hazard_result["hazard_class"] if hazard_result else "SAFE"
+            classical_conf = hazard_result.get("confidence", 0.5) if hazard_result else 0.5
+
+            fused = fuse_classifications(grid_cell, classical_class, classical_conf, yolo_dets)
+
+            # Update fused results (replace existing for this cell)
+            self._fused_results = [
+                f for f in self._fused_results if f["cell"] != list(grid_cell)
+            ]
+            self._fused_results.append(fused)
+
+            # Apply fused classification back to grids if it changed
+            if fused["fused_classification"] != classical_class:
+                r, c = grid_cell
+                fused_class = fused["fused_classification"]
+                cost_map = {
+                    "SAFE": config.COST_SAFE, "MODERATE": config.COST_MODERATE,
+                    "SHADOW": config.COST_SHADOW, "HAZARD": config.COST_HAZARD,
+                    "IMPASSABLE": config.COST_IMPASSABLE,
+                }
+                self._cost_grid[r, c] = cost_map.get(fused_class, config.COST_SAFE)
+                self._hazard_grid[r][c] = fused_class
+                self._confidence_grid[r, c] = fused["fused_confidence"]
+                logger.info(
+                    f"Pipeline [{basename}] fusion: {classical_class} → {fused_class} "
+                    f"(conf {classical_conf:.2f} → {fused['fused_confidence']:.2f})"
+                )
+
+            # Update mission state with YOLO data
+            self._mission_state.record_yolo_result(
+                self._yolo_detector.model_name,
+                self._yolo_detections,
+                self._fused_results,
+            )
+
+            # Save detections JSON
+            save_detections_json(self._yolo_detections, self._fused_results)
+
+            n_dets = len(yolo_dets)
+            agreement = "agree" if fused["agreement"] else "DISAGREE"
+            logger.info(
+                f"Pipeline [{basename}] yolo: {n_dets} detection(s), "
+                f"fused={fused['fused_classification']} conf={fused['fused_confidence']:.2f} "
+                f"({agreement} with classical CV)"
+            )
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] yolo_detector FAILED: {e}", exc_info=True)
 
         # ── Update image index (for change detection) ──
         prev_entry = self._get_prev_entry(grid_cell, pass_number)

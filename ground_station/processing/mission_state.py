@@ -128,6 +128,33 @@ class MissionState:
             if r["selected"] is None:
                 r["selected"] = "safest"
 
+    def record_yolo_result(self, model_name: str, detections_per_cell: dict, fused_results: list):
+        """Call after YOLODetector + fusion for each image."""
+        with self._lock:
+            ml = self._state["ml_detection"]
+            ml["model"] = model_name
+
+            # Flatten all detections for counts
+            flat = []
+            for dets in detections_per_cell.values():
+                flat.extend(dets)
+
+            ml["total_detections"] = len(flat)
+            ml["craters_detected"] = sum(1 for d in flat if d["class"] == "crater")
+            ml["boulders_detected"] = sum(1 for d in flat if d["class"] == "boulder")
+
+            agreement_count = sum(1 for f in fused_results if f["agreement"])
+            total_fused = len(fused_results)
+            ml["cv_agreement_rate"] = round(
+                agreement_count / total_fused, 3
+            ) if total_fused else 1.0
+
+            # Store per-cell detections (just class + confidence, not full bbox)
+            ml["detections_per_cell"] = {
+                k: [{"class": d["class"], "conf": d["confidence"]} for d in v]
+                for k, v in detections_per_cell.items()
+            }
+
     def record_downlink_bytes(self, n_bytes: int, duration_sec: float, success: bool):
         """Call from receiver/listener.py after each completed (or failed) transfer."""
         with self._lock:
@@ -272,6 +299,14 @@ class MissionState:
             "uplink": {
                 "commands_sent": 0,
                 "commands_acked": 0,
+            },
+            "ml_detection": {
+                "model": "none",
+                "total_detections": 0,
+                "craters_detected": 0,
+                "boulders_detected": 0,
+                "cv_agreement_rate": 1.0,
+                "detections_per_cell": {},
             },
             # Internal — not written to JSON
             "_cubesat_scores": [],

@@ -278,6 +278,33 @@ def api_image(filename):
     return ("Image not found", 404)
 
 
+@app.route("/api/yolo_detections")
+def api_yolo_detections():
+    """Return YOLO detection results and fused classifications."""
+    path = os.path.join(config.PROCESSED_DIR, "yolo_detections.json")
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="application/json")
+    return jsonify({
+        "detections_per_cell": {},
+        "fused_classifications": [],
+        "summary": {
+            "total_detections": 0, "craters_detected": 0,
+            "boulders_detected": 0, "cv_agreement_rate": 1.0,
+            "cells_analyzed": 0,
+        }
+    })
+
+
+@app.route("/api/yolo_annotated")
+def api_yolo_annotated():
+    """Return the latest YOLO-annotated image."""
+    det_dir = os.path.join(config.PROCESSED_DIR, "yolo_detections")
+    path = _latest_file(det_dir, "*_yolo.png")
+    if path:
+        return send_file(os.path.abspath(path), mimetype="image/png")
+    return ("No YOLO annotated image yet", 204)
+
+
 @app.route("/api/plan_routes", methods=["POST"])
 def api_plan_routes():
     """Body: {start: [row, col], end: [row, col]} → run plan_multiple_routes."""

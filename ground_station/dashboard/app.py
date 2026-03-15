@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import shutil
-import zipfile
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -648,39 +647,433 @@ def api_clear_last_pass():
 
 @app.route("/api/export_mission")
 def api_export_mission():
-    """Export mission_state.json + all processed files as a zip download."""
+    """Export a formatted PDF mission report."""
     try:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            # mission_state.json
-            if os.path.exists(config.MISSION_STATE_FILE):
-                zf.write(config.MISSION_STATE_FILE, "mission_state.json")
-
-            # All processed files
-            if os.path.exists(config.PROCESSED_DIR):
-                for root, dirs, files in os.walk(config.PROCESSED_DIR):
-                    for fname in files:
-                        fpath = os.path.join(root, fname)
-                        arcname = os.path.join("processed",
-                                               os.path.relpath(fpath, config.PROCESSED_DIR))
-                        zf.write(fpath, arcname)
-
-            # Received images
-            if os.path.exists(config.RECEIVED_DIR):
-                for fname in os.listdir(config.RECEIVED_DIR):
-                    fpath = os.path.join(config.RECEIVED_DIR, fname)
-                    if os.path.isfile(fpath):
-                        zf.write(fpath, os.path.join("images", fname))
-
-        buf.seek(0)
+        buf = _build_mission_pdf()
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         return send_file(
-            buf, mimetype="application/zip", as_attachment=True,
-            download_name=f"mission_export_{ts}.zip",
+            buf, mimetype="application/pdf", as_attachment=True,
+            download_name=f"MuraltZ_Mission_Report_{ts}.pdf",
         )
     except Exception as e:
         logger.error(f"Export failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF Report Builder
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_mission_pdf() -> io.BytesIO:
+    """Build a clean, formatted PDF mission report from current mission data."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
+        PageBreak, HRFlowable,
+    )
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+        leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        "ReportTitle", parent=styles["Title"], fontSize=22, spaceAfter=4,
+        textColor=colors.HexColor("#0a2540"),
+    ))
+    styles.add(ParagraphStyle(
+        "SectionHead", parent=styles["Heading2"], fontSize=14,
+        textColor=colors.HexColor("#0a2540"), spaceBefore=16, spaceAfter=6,
+        borderWidth=0, borderPadding=0,
+    ))
+    styles.add(ParagraphStyle(
+        "SubHead", parent=styles["Heading3"], fontSize=11,
+        textColor=colors.HexColor("#333333"), spaceBefore=10, spaceAfter=4,
+    ))
+    styles.add(ParagraphStyle(
+        "BodyText2", parent=styles["BodyText"], fontSize=10,
+        textColor=colors.HexColor("#222222"), leading=14,
+    ))
+    styles.add(ParagraphStyle(
+        "SmallGray", parent=styles["BodyText"], fontSize=8,
+        textColor=colors.HexColor("#888888"),
+    ))
+
+    story = []
+
+    # ── Load data ──
+    state = _mission_state.get_snapshot() if _mission_state else {}
+    cost_grid_data = {}
+    cost_grid_path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
+    if os.path.exists(cost_grid_path):
+        with open(cost_grid_path) as f:
+            cost_grid_data = json.load(f)
+
+    changes_data = {}
+    changes_path = os.path.join(config.PROCESSED_DIR, "changes.json")
+    if os.path.exists(changes_path):
+        with open(changes_path) as f:
+            changes_data = json.load(f)
+
+    shadow_data = {}
+    shadow_path = os.path.join(config.PROCESSED_DIR, "shadow_data.json")
+    if os.path.exists(shadow_path):
+        with open(shadow_path) as f:
+            shadow_data = json.load(f)
+
+    ts_now = datetime.now().strftime("%B %d, %Y  %H:%M:%S")
+
+    # ── Title page ──
+    story.append(Spacer(1, 1.5 * inch))
+    story.append(Paragraph("MuraltZ CubeSat", styles["ReportTitle"]))
+    story.append(Paragraph("Mission Report", styles["ReportTitle"]))
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(HRFlowable(width="60%", thickness=2, color=colors.HexColor("#00d4ff")))
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(f"Generated: {ts_now}", styles["BodyText2"]))
+    last_updated = state.get("last_updated", "N/A")
+    if last_updated and last_updated != "N/A":
+        try:
+            dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
+            last_updated = dt.strftime("%B %d, %Y  %H:%M:%S UTC")
+        except Exception:
+            pass
+    story.append(Paragraph(f"Mission data as of: {last_updated}", styles["BodyText2"]))
+    story.append(PageBreak())
+
+    # ── 1. Mission Overview ──
+    story.append(Paragraph("1. Mission Overview", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    overview_data = [
+        ["Parameter", "Value"],
+        ["Total Passes", str(state.get("total_passes", 0))],
+        ["Images Received", str(state.get("total_images_received", 0))],
+        ["Images Corrupted", str(state.get("total_images_corrupted", 0))],
+        ["Avg CubeSat Quality Score", f"{state.get('quality', {}).get('avg_cubesat_score', 0):.3f}"],
+        ["Ground-Flagged Images", str(state.get("quality", {}).get("ground_flagged", 0))],
+    ]
+    flag_reasons = state.get("quality", {}).get("ground_flag_reasons", [])
+    if flag_reasons:
+        overview_data.append(["Flag Reasons", ", ".join(flag_reasons)])
+
+    story.append(_make_table(overview_data))
+
+    # ── 2. Coverage ──
+    story.append(Paragraph("2. Survey Coverage", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    cov = state.get("coverage", {})
+    filled = cov.get("cells_filled", 0)
+    total = cov.get("cells_total", 64)
+    pct = cov.get("pct", 0.0)
+    story.append(Paragraph(
+        f"<b>{filled}</b> of <b>{total}</b> grid cells surveyed (<b>{pct}%</b> coverage)",
+        styles["BodyText2"],
+    ))
+
+    # Coverage grid visual
+    classifications = cost_grid_data.get("classifications", [])
+    coverage = cost_grid_data.get("coverage", [])
+    if classifications:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Grid Classification Map:", styles["SubHead"]))
+        grid_table_data = []
+        color_map = {
+            "SAFE": colors.HexColor("#1a3a1a"),
+            "MODERATE": colors.HexColor("#3a3a1a"),
+            "SHADOW": colors.HexColor("#1a1a3a"),
+            "HAZARD": colors.HexColor("#3a1a1a"),
+            "IMPASSABLE": colors.HexColor("#3a0a0a"),
+        }
+        text_color_map = {
+            "SAFE": colors.HexColor("#44cc44"),
+            "MODERATE": colors.HexColor("#cccc44"),
+            "SHADOW": colors.HexColor("#6688cc"),
+            "HAZARD": colors.HexColor("#cc4444"),
+            "IMPASSABLE": colors.HexColor("#ff4444"),
+        }
+        cell_styles = []
+        for r_idx, row in enumerate(classifications):
+            grid_row = []
+            for c_idx, cls in enumerate(row):
+                is_covered = True
+                if coverage and r_idx < len(coverage) and c_idx < len(coverage[r_idx]):
+                    is_covered = coverage[r_idx][c_idx]
+                if is_covered:
+                    label = cls[:3]
+                else:
+                    label = "---"
+                grid_row.append(label)
+                bg = color_map.get(cls, colors.HexColor("#333333")) if is_covered else colors.HexColor("#1a1a1a")
+                cell_styles.append(("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), bg))
+                tc = text_color_map.get(cls, colors.white) if is_covered else colors.HexColor("#555555")
+                cell_styles.append(("TEXTCOLOR", (c_idx, r_idx), (c_idx, r_idx), tc))
+            grid_table_data.append(grid_row)
+
+        if grid_table_data:
+            col_w = 0.55 * inch
+            t = Table(grid_table_data, colWidths=[col_w] * 8, rowHeights=[0.35 * inch] * len(grid_table_data))
+            t.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("FONTNAME", (0, 0), (-1, -1), "Courier-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#555555")),
+            ] + cell_styles))
+            story.append(t)
+
+        story.append(Spacer(1, 6))
+        legend_items = ["SAF = Safe", "MOD = Moderate", "SHA = Shadow", "HAZ = Hazard", "IMP = Impassable", "--- = Not Surveyed"]
+        story.append(Paragraph("Legend: " + "  |  ".join(legend_items), styles["SmallGray"]))
+
+    # ── 3. Hazard Summary ──
+    story.append(Paragraph("3. Hazard Classification Summary", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    hazards = state.get("hazards", {})
+    hazard_data = [
+        ["Classification", "Count"],
+        ["Safe", str(hazards.get("safe", 0))],
+        ["Moderate", str(hazards.get("moderate", 0))],
+        ["Shadow", str(hazards.get("shadow", 0))],
+        ["Hazard", str(hazards.get("hazard", 0))],
+        ["Impassable", str(hazards.get("impassable", 0))],
+    ]
+    story.append(_make_table(hazard_data))
+
+    # Confidence grid
+    confidences = cost_grid_data.get("confidences", [])
+    if confidences:
+        flat = [c for row in confidences for c in row if isinstance(c, (int, float)) and c > 0]
+        if flat:
+            avg_conf = sum(flat) / len(flat)
+            min_conf = min(flat)
+            max_conf = max(flat)
+            story.append(Paragraph(
+                f"Classification confidence: avg={avg_conf:.2f}, min={min_conf:.2f}, max={max_conf:.2f}",
+                styles["BodyText2"],
+            ))
+
+    # ── 4. Shadow Detection ──
+    story.append(Paragraph("4. Shadow Detection", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    shadow_pct = shadow_data.get("shadow_pct", 0)
+    regions = shadow_data.get("regions", [])
+    shadows = [r for r in regions if r.get("type") == "shadow"]
+    objects = [r for r in regions if r.get("type") == "object"]
+
+    shadow_summary = [
+        ["Metric", "Value"],
+        ["Shadow Coverage", f"{shadow_pct:.1f}%"],
+        ["Shadow Regions", str(len(shadows))],
+        ["Dark Objects", str(len(objects))],
+    ]
+    if shadows:
+        largest = max(shadows, key=lambda r: r.get("area_px", 0))
+        shadow_summary.append(["Largest Shadow Region", f"{largest.get('area_px', 0)} px"])
+    story.append(_make_table(shadow_summary))
+
+    if regions:
+        story.append(Paragraph("Detected Regions:", styles["SubHead"]))
+        region_header = ["ID", "Type", "Area (px)", "Gradient"]
+        region_rows = [region_header]
+        for r in regions[:10]:
+            region_rows.append([
+                str(r.get("id", "")),
+                r.get("type", ""),
+                str(r.get("area_px", "")),
+                f"{r.get('mean_boundary_gradient', 0):.1f}",
+            ])
+        story.append(_make_table(region_rows))
+
+    # ── 5. Change Detection ──
+    story.append(Paragraph("5. Change Detection", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    ch = state.get("changes", {})
+    change_summary = [
+        ["Metric", "Value"],
+        ["Total Change Events", str(ch.get("total_events", 0))],
+        ["Total Changed Area", f"{ch.get('total_changed_area_cm2', 0):.1f} cm\u00b2"],
+        ["Largest Change", f"{ch.get('largest_change_cm2', 0):.1f} cm\u00b2"],
+        ["Darkened Events", str(ch.get("types", {}).get("darkened", 0))],
+        ["Brightened Events", str(ch.get("types", {}).get("brightened", 0))],
+        ["Alignment Warnings", str(ch.get("alignment_warnings", 0))],
+    ]
+    cells_with = ch.get("cells_with_changes", [])
+    if cells_with:
+        change_summary.append(["Affected Cells", ", ".join(f"({c[0]},{c[1]})" for c in cells_with)])
+    story.append(_make_table(change_summary))
+
+    # Individual events
+    events = changes_data.get("events", [])
+    if events:
+        story.append(Paragraph("Change Events Detail:", styles["SubHead"]))
+        evt_header = ["ID", "Cell", "Type", "Area (px)", "SSIM", "Persist"]
+        evt_rows = [evt_header]
+        for evt in events:
+            cell = evt.get("cell", [])
+            evt_rows.append([
+                str(evt.get("id", "")),
+                f"({cell[0]},{cell[1]})" if len(cell) == 2 else "",
+                evt.get("type", ""),
+                str(evt.get("area_px", "")),
+                f"{evt.get('ssim_score', 0):.3f}" if evt.get("ssim_score") else "--",
+                "Yes" if evt.get("persistence") else "No",
+            ])
+        story.append(_make_table(evt_rows))
+
+    # ── 6. Route Planning ──
+    story.append(PageBreak())
+    story.append(Paragraph("6. Route Planning", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    route = state.get("route", {})
+    route_summary = [
+        ["Metric", "Value"],
+        ["Start Cell", str(route.get("start", []))],
+        ["End Cell", str(route.get("end", []))],
+        ["Status", route.get("status", "N/A")],
+        ["Path Length", f"{route.get('path_length', 0)} cells"],
+        ["Total Cost", f"{route.get('total_cost', 0):.1f}"],
+        ["Shadow Exposure", f"{route.get('shadow_exposure_pct', 0):.1f}%"],
+    ]
+    story.append(_make_table(route_summary))
+
+    # Route comparison
+    routes = state.get("routes", {})
+    route_names = ["fastest", "safest", "balanced"]
+    route_comparison = [["", "Fastest", "Safest", "Balanced"]]
+    has_routes = any(routes.get(n) for n in route_names)
+
+    if has_routes:
+        story.append(Paragraph("Route Comparison:", styles["SubHead"]))
+        metrics = [
+            ("Path Length", "path_length_cells", "{} cells"),
+            ("Distance", "distance_cm", "{:.0f} cm"),
+            ("Total Cost", "total_cost", "{:.1f}"),
+            ("Shadow Exposure", "max_shadow_exposure_pct", "{:.1f}%"),
+            ("Hazards Near Path", "hazards_near_path", "{}"),
+            ("Risk Level", "risk_level", "{}"),
+        ]
+        for label, key, fmt in metrics:
+            row = [label]
+            for name in route_names:
+                rd = routes.get(name) or {}
+                val = rd.get(key)
+                if val is not None:
+                    try:
+                        row.append(fmt.format(val))
+                    except Exception:
+                        row.append(str(val))
+                else:
+                    row.append("--")
+            route_comparison.append(row)
+
+        selected = routes.get("selected", "")
+        route_comparison.append(["Selected", "\u2713" if selected == "fastest" else "",
+                                  "\u2713" if selected == "safest" else "",
+                                  "\u2713" if selected == "balanced" else ""])
+        story.append(_make_table(route_comparison))
+
+    # Route map image
+    route_img_path = os.path.join(config.PROCESSED_DIR, "routes", "route_comparison.png")
+    if not os.path.exists(route_img_path):
+        route_img_path = os.path.join(config.PROCESSED_DIR, "routes", "route_latest.png")
+    if os.path.exists(route_img_path):
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("Route Map:", styles["SubHead"]))
+        try:
+            img = Image(route_img_path)
+            img_w = min(5.5 * inch, img.drawWidth)
+            scale = img_w / img.drawWidth
+            img.drawWidth = img_w
+            img.drawHeight = img.drawHeight * scale
+            story.append(img)
+        except Exception:
+            pass
+
+    # ── 7. Downlink / Uplink ──
+    story.append(Paragraph("7. Communication Statistics", styles["SectionHead"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+
+    dl = state.get("downlink", {})
+    ul = state.get("uplink", {})
+    comm_data = [
+        ["Metric", "Value"],
+        ["Total Downlinked", f"{dl.get('total_bytes', 0):,} bytes"],
+        ["Transfer Time", f"{dl.get('total_time_sec', 0):.1f} sec"],
+        ["Effective Rate", f"{dl.get('effective_rate_bps', 0):.0f} B/s"],
+        ["Failed Transfers", str(dl.get("failed_transfers", 0))],
+        ["Retransmit Requests", str(dl.get("retransmit_requests", 0))],
+        ["Commands Sent", str(ul.get("commands_sent", 0))],
+        ["Commands ACK'd", str(ul.get("commands_acked", 0))],
+    ]
+    story.append(_make_table(comm_data))
+
+    # ── 8. Mosaic ──
+    mosaic_path = os.path.join(config.PROCESSED_DIR, "mosaics", "mosaic_latest.png")
+    if os.path.exists(mosaic_path):
+        story.append(PageBreak())
+        story.append(Paragraph("8. Survey Mosaic", styles["SectionHead"]))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+        try:
+            img = Image(mosaic_path)
+            img_w = min(6.0 * inch, img.drawWidth)
+            scale = img_w / img.drawWidth
+            img.drawWidth = img_w
+            img.drawHeight = img.drawHeight * scale
+            story.append(img)
+        except Exception:
+            pass
+
+    # ── Footer ──
+    story.append(Spacer(1, 0.5 * inch))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+    story.append(Paragraph(
+        f"MuraltZ Ground Control Station | Report generated {ts_now}",
+        styles["SmallGray"],
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def _make_table(data: list) -> Table:
+    """Build a styled reportlab Table from a list of rows (first row is header)."""
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Table, TableStyle
+
+    t = Table(data, hAlign="LEFT")
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0a2540")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f7fa")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+    ]
+    t.setStyle(TableStyle(style_cmds))
+    return t
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -26,14 +26,21 @@ _ACK_TIMEOUT_SEC = 5
 class Commander:
     """Sends JSON commands to the CubeSat over TCP on COMMAND_PORT."""
 
+    def __init__(self):
+        self.last_error: str = ""   # Human-readable reason for last failure
+
     def send_command(self, cmd_dict: dict) -> bool:
         """
         Open a connection to the CubeSat, send JSON + newline, wait for ACK.
 
         Returns True on ACK, False on NACK or any connection/timeout error.
+        Sets self.last_error with a human-readable reason on failure.
         CUBESAT_IP must be set in config before this is called.
         """
+        self.last_error = ""
+
         if not config.CUBESAT_IP:
+            self.last_error = "CUBESAT_IP not set"
             logger.error("CUBESAT_IP is not set in config — cannot send command")
             return False
 
@@ -55,25 +62,24 @@ class Commander:
                 logger.info(f"ACK received for cmd='{cmd_name}'")
                 return True
             elif response == protocol.NACK:
+                self.last_error = "NACK — CubeSat rejected command"
                 logger.warning(f"NACK received for cmd='{cmd_name}'")
                 return False
             else:
+                self.last_error = f"Unexpected response: {response!r}"
                 logger.warning(
                     f"Unexpected response byte {response!r} for cmd='{cmd_name}'"
                 )
                 return False
 
         except ConnectionRefusedError:
-            logger.error(
-                f"Command '{cmd_name}' failed: connection refused "
-                f"({config.CUBESAT_IP}:{config.COMMAND_PORT}) — CubeSat not listening?"
-            )
+            self.last_error = f"Connection refused ({config.CUBESAT_IP}:{config.COMMAND_PORT}) — is flight software running?"
+            logger.error(f"Command '{cmd_name}' failed: {self.last_error}")
         except TimeoutError:
-            logger.error(
-                f"Command '{cmd_name}' timed out waiting for ACK "
-                f"({config.CUBESAT_IP}:{config.COMMAND_PORT})"
-            )
+            self.last_error = f"Timeout waiting for ACK ({config.CUBESAT_IP}:{config.COMMAND_PORT})"
+            logger.error(f"Command '{cmd_name}' timed out")
         except OSError as e:
+            self.last_error = f"Network error: {e}"
             logger.error(f"Command '{cmd_name}' network error: {e}")
 
         return False

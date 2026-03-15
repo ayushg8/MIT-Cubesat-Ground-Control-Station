@@ -6,7 +6,7 @@
 LISTEN_PORT = 5000
 COMMAND_PORT = 5001
 LISTEN_HOST = "0.0.0.0"
-CUBESAT_IP = ""                    # Fill in: CubeSat's real IP on the shared network
+CUBESAT_IP = "192.168.1.229"       # Fill in: CubeSat's real IP on the shared network
 
 # === STORAGE ===
 RECEIVED_DIR = "data/received_images"

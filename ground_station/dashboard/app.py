@@ -58,7 +58,7 @@ def append_quality_entry(entry: dict):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", cubesat_ip=config.CUBESAT_IP or "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ def api_start_pass():
     if _mission_state:
         _mission_state.record_command(acked=success)
     logger.info(f"start_pass → {'ACK' if success else 'FAIL'}")
-    return jsonify({"success": success})
+    return jsonify({"success": success, "error": _commander.last_error if not success else ""})
 
 
 @app.route("/api/end_pass", methods=["POST"])
@@ -353,7 +353,7 @@ def api_end_pass():
     if _mission_state:
         _mission_state.record_command(acked=success)
     logger.info(f"end_pass → {'ACK' if success else 'FAIL'}")
-    return jsonify({"success": success})
+    return jsonify({"success": success, "error": _commander.last_error if not success else ""})
 
 
 @app.route("/api/set_cell", methods=["POST"])
@@ -371,7 +371,33 @@ def api_set_cell():
     if _mission_state:
         _mission_state.record_command(acked=success)
     logger.info(f"set_cell ({row},{col}) → {'ACK' if success else 'FAIL'}")
-    return jsonify({"success": success})
+    return jsonify({"success": success, "error": _commander.last_error if not success else ""})
+
+
+@app.route("/api/set_cubesat_ip", methods=["POST"])
+def api_set_cubesat_ip():
+    """Set CUBESAT_IP at runtime and test TCP reachability. Body: {ip}."""
+    import socket as _socket
+    try:
+        body = request.get_json(force=True) or {}
+        ip = body.get("ip", "").strip()
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid JSON"}), 400
+
+    if not ip:
+        return jsonify({"success": False, "error": "Missing ip"}), 400
+
+    # Test TCP connectivity to COMMAND_PORT before committing
+    reachable = False
+    try:
+        with _socket.create_connection((ip, config.COMMAND_PORT), timeout=1.5):
+            reachable = True
+    except Exception:
+        pass
+
+    config.CUBESAT_IP = ip
+    logger.info(f"CUBESAT_IP updated to {ip} (reachable={reachable})")
+    return jsonify({"success": True, "ip": ip, "reachable": reachable})
 
 
 @app.route("/api/llm_query", methods=["POST"])

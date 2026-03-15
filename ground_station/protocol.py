@@ -75,6 +75,9 @@ NACK = b'\x15'  # ASCII NAK — GCS sends this if MD5 mismatch or decode failure
 #
 #   {"cmd": "cell", "row": R, "col": C}
 #       → Set the next grid cell to image (replaces set_cell for real-time control)
+#
+#   {"cmd": "reset_mission"}
+#       → Reset pass counter, clear coverage/queue/image index, start fresh
 
 # === FILE NAMING CONVENTION ===
 #

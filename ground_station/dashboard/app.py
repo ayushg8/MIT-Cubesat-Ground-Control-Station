@@ -9,9 +9,12 @@ from __future__ import annotations
 # via the set_*() functions below so this module has no circular imports.
 
 import glob
+import io
 import json
 import logging
 import os
+import shutil
+import zipfile
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -19,6 +22,7 @@ from flask import Flask, jsonify, render_template, request, send_file
 import config
 from receiver import telemetry_parser
 from uplink.commander import Commander
+from uplink import pi_manager
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +175,33 @@ def api_mosaic():
 
 @app.route("/api/routes")
 def api_routes():
-    """Return fastest/safest/balanced route dicts from mission state."""
+    """Return fastest/safest/balanced route dicts from mission state,
+    falling back to routes.json file."""
     state = _mission_state.get_snapshot() if _mission_state else {}
     routes = state.get("routes", {})
+    # If mission state has route data WITH paths, use it
+    fastest = routes.get("fastest") or {}
+    if fastest.get("path"):
+        return jsonify(routes)
+    # Fall back to routes.json (has full path arrays)
+    rpath = os.path.join(config.PROCESSED_DIR, "routes.json")
+    if os.path.exists(rpath):
+        with open(rpath) as f:
+            rdata = json.load(f)
+        # Convert array format to keyed format expected by dashboard
+        if "routes" in rdata and isinstance(rdata["routes"], list):
+            out = {
+                "selected": rdata.get("selected", "safest"),
+                "constrained": rdata.get("constrained"),
+                "start": rdata.get("start"),
+                "end": rdata.get("end"),
+            }
+            for r in rdata["routes"]:
+                key = r["name"].lower()
+                out[key] = {**r.get("stats", {}), "path": r.get("path", []),
+                            "name": r["name"], "color": r.get("color", "#fff")}
+            return jsonify(out)
+        return jsonify(rdata)
     return jsonify(routes)
 
 
@@ -215,9 +243,88 @@ def api_cost_heatmap():
     return jsonify({"cells": cells, "rows": rows, "cols": cols})
 
 
+@app.route("/api/cost_grid")
+def api_cost_grid():
+    """Return cost_grid.json contents."""
+    path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="application/json")
+    return jsonify({"grid": [], "classifications": [], "coverage": [], "pass_data": [], "change_cells": []})
+
+
+@app.route("/api/changes")
+def api_changes():
+    """Return changes.json contents."""
+    path = os.path.join(config.PROCESSED_DIR, "changes.json")
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="application/json")
+    return jsonify({"events": [], "summary": {"total_events": 0, "total_area": 0}})
+
+
+@app.route("/api/shadow_data")
+def api_shadow_data():
+    """Return shadow_data.json contents."""
+    path = os.path.join(config.PROCESSED_DIR, "shadow_data.json")
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="application/json")
+    return jsonify({"shadow_pct": 0, "regions": []})
+
+
+@app.route("/api/image/<path:filename>")
+def api_image(filename):
+    """Serve raw image files from received_images/."""
+    path = os.path.join(config.RECEIVED_DIR, filename)
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="image/jpeg")
+    return ("Image not found", 404)
+
+
+@app.route("/api/plan_routes", methods=["POST"])
+def api_plan_routes():
+    """Body: {start: [row, col], end: [row, col]} → run plan_multiple_routes."""
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    start = tuple(body.get("start", list(config.ROUTE_START)))
+    end = tuple(body.get("end", list(config.ROUTE_END)))
+
+    # Validate coordinates
+    for label, pt in [("start", start), ("end", end)]:
+        if len(pt) != 2 or not (0 <= pt[0] < config.GRID_ROWS and 0 <= pt[1] < config.GRID_COLS):
+            return jsonify({"error": f"Invalid {label}: {pt}"}), 400
+
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+
+    cost_grid = _pipeline.get_cost_grid()
+    hazard_grid = _pipeline.get_hazard_grid()
+    hazard_map_path = _pipeline.get_latest_hazard_map_path() if hasattr(_pipeline, 'get_latest_hazard_map_path') else None
+
+    try:
+        routes = _pipeline._route_planner.plan_multiple_routes(
+            cost_grid, hazard_grid, start, end, hazard_map_path,
+        )
+        if _mission_state:
+            with _mission_state._lock:
+                _mission_state._state["routes"]["fastest"] = routes.get("fastest")
+                _mission_state._state["routes"]["safest"] = routes.get("safest")
+                _mission_state._state["routes"]["balanced"] = routes.get("balanced")
+                _mission_state._state["route"]["start"] = list(start)
+                _mission_state._state["route"]["end"] = list(end)
+            _mission_state.save()
+        routes["start"] = list(start)
+        routes["end"] = list(end)
+        return jsonify(routes)
+    except Exception as e:
+        logger.error(f"plan_routes failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/plan_constrained", methods=["POST"])
 def api_plan_constrained():
-    """Body: {max_shadow_pct, min_hazard_clearance} → route JSON."""
+    """Body: {max_shadow_pct, min_hazard_clearance, start?, end?} → route JSON."""
     try:
         body = request.get_json(force=True) or {}
     except Exception:
@@ -225,6 +332,8 @@ def api_plan_constrained():
 
     max_shadow_pct = float(body.get("max_shadow_pct", 50.0))
     min_hazard_clearance = int(body.get("min_hazard_clearance", 1))
+    start = tuple(body.get("start", list(config.ROUTE_START)))
+    end = tuple(body.get("end", list(config.ROUTE_END)))
 
     if _pipeline is None:
         return jsonify({"error": "Pipeline not ready"}), 503
@@ -235,7 +344,7 @@ def api_plan_constrained():
     try:
         result = _pipeline._route_planner.plan_with_constraints(
             cost_grid, hazard_grid,
-            config.ROUTE_START, config.ROUTE_END,
+            start, end,
             max_shadow_pct, min_hazard_clearance,
         )
         if _mission_state:
@@ -400,6 +509,34 @@ def api_set_cubesat_ip():
     return jsonify({"success": True, "ip": ip, "reachable": reachable})
 
 
+@app.route("/api/discover_cubesat", methods=["POST"])
+def api_discover_cubesat():
+    """Discover the Pi via mDNS, test SSH, check if flight software is running."""
+    result = pi_manager.discover()
+    return jsonify(result)
+
+
+@app.route("/api/pi_start", methods=["POST"])
+def api_pi_start():
+    """SSH into the Pi and start flight software (or report it's already running)."""
+    result = pi_manager.start_flight_software()
+    return jsonify(result)
+
+
+@app.route("/api/pi_stop", methods=["POST"])
+def api_pi_stop():
+    """SSH into the Pi and stop the flight software."""
+    result = pi_manager.stop_flight_software()
+    return jsonify(result)
+
+
+@app.route("/api/pi_log")
+def api_pi_log():
+    """Get last 30 lines of the Pi flight log via SSH."""
+    result = pi_manager.get_pi_log(30)
+    return jsonify(result)
+
+
 @app.route("/api/llm_query", methods=["POST"])
 def api_llm_query():
     """Optional: send a question to local ollama with mission_state as context."""
@@ -415,6 +552,135 @@ def api_llm_query():
     state = _mission_state.get_snapshot() if _mission_state else {}
     response_text = _query_ollama(question, state)
     return jsonify({"response": response_text})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mission management (reset / clear / export)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/reset_mission", methods=["POST"])
+def api_reset_mission():
+    """Delete ALL mission data: received images, processed files, reset state."""
+    try:
+        # Clear received images
+        if os.path.exists(config.RECEIVED_DIR):
+            shutil.rmtree(config.RECEIVED_DIR)
+            os.makedirs(config.RECEIVED_DIR, exist_ok=True)
+
+        # Clear processed data
+        if os.path.exists(config.PROCESSED_DIR):
+            shutil.rmtree(config.PROCESSED_DIR)
+            os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+
+        # Reset mission state
+        if _mission_state:
+            _mission_state.reset()
+
+        # Tell CubeSat to reset
+        if _commander:
+            _commander.send_command({"cmd": "reset_mission"})
+
+        logger.info("Mission reset: all data cleared")
+        return jsonify({"status": "ok", "message": "Mission data reset"})
+    except Exception as e:
+        logger.error(f"Mission reset failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/clear_last_pass", methods=["POST"])
+def api_clear_last_pass():
+    """Remove images and processed data from the most recent pass."""
+    try:
+        state = _mission_state.get_snapshot() if _mission_state else {}
+        total_passes = state.get("total_passes", 0)
+        if total_passes < 1:
+            return jsonify({"status": "error", "message": "No passes to clear"}), 400
+
+        last_pass = total_passes
+        prefix = f"pass{last_pass}_"
+
+        # Remove received images from last pass
+        removed_images = 0
+        if os.path.exists(config.RECEIVED_DIR):
+            for f in os.listdir(config.RECEIVED_DIR):
+                if f.startswith(prefix):
+                    os.remove(os.path.join(config.RECEIVED_DIR, f))
+                    removed_images += 1
+
+        # Remove processed change maps from last pass
+        change_maps_dir = os.path.join(config.PROCESSED_DIR, "change_maps")
+        if os.path.exists(change_maps_dir):
+            for f in os.listdir(change_maps_dir):
+                if f"_p{last_pass - 1}vs{last_pass}" in f or f"_p{last_pass}vs" in f:
+                    os.remove(os.path.join(change_maps_dir, f))
+
+        # Remove last pass entries from image_index.json
+        idx_path = os.path.join(config.PROCESSED_DIR, "image_index.json")
+        if os.path.exists(idx_path):
+            with open(idx_path) as f:
+                idx = json.load(f)
+            for key in idx:
+                idx[key] = [e for e in idx[key] if e.get("pass") != last_pass]
+            with open(idx_path, "w") as f:
+                json.dump(idx, f, indent=2)
+
+        # Decrement pass counter in mission state
+        if _mission_state:
+            snap = _mission_state.get_snapshot()
+            # We can't directly modify — reset and rebuild would be complex,
+            # so just adjust total_passes via internal state
+            with _mission_state._lock:
+                _mission_state._state["total_passes"] = max(0, total_passes - 1)
+                _mission_state._state["total_images_received"] = max(
+                    0, _mission_state._state["total_images_received"] - removed_images)
+            _mission_state.save()
+
+        logger.info(f"Cleared last pass (pass {last_pass}): {removed_images} images removed")
+        return jsonify({
+            "status": "ok",
+            "message": f"Pass {last_pass} cleared ({removed_images} images removed)",
+            "new_total_passes": max(0, total_passes - 1),
+        })
+    except Exception as e:
+        logger.error(f"Clear last pass failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/export_mission")
+def api_export_mission():
+    """Export mission_state.json + all processed files as a zip download."""
+    try:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            # mission_state.json
+            if os.path.exists(config.MISSION_STATE_FILE):
+                zf.write(config.MISSION_STATE_FILE, "mission_state.json")
+
+            # All processed files
+            if os.path.exists(config.PROCESSED_DIR):
+                for root, dirs, files in os.walk(config.PROCESSED_DIR):
+                    for fname in files:
+                        fpath = os.path.join(root, fname)
+                        arcname = os.path.join("processed",
+                                               os.path.relpath(fpath, config.PROCESSED_DIR))
+                        zf.write(fpath, arcname)
+
+            # Received images
+            if os.path.exists(config.RECEIVED_DIR):
+                for fname in os.listdir(config.RECEIVED_DIR):
+                    fpath = os.path.join(config.RECEIVED_DIR, fname)
+                    if os.path.isfile(fpath):
+                        zf.write(fpath, os.path.join("images", fname))
+
+        buf.seek(0)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return send_file(
+            buf, mimetype="application/zip", as_attachment=True,
+            download_name=f"mission_export_{ts}.zip",
+        )
+    except Exception as e:
+        logger.error(f"Export failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -197,6 +197,13 @@ class MissionState:
         except Exception as e:
             logger.warning(f"MissionState: could not load mission_state.json: {e} — starting fresh")
 
+    def reset(self):
+        """Reset all mission state to empty defaults."""
+        with self._lock:
+            self._state = self._empty_state()
+        self.save()
+        logger.info("MissionState: reset to empty defaults")
+
     def get_snapshot(self) -> dict:
         """Return a copy of the current state dict (for dashboard reads)."""
         with self._lock:

@@ -14,6 +14,7 @@ from __future__ import annotations
 # (it shows the system correctly identifies blocked terrain).
 
 import heapq
+import json
 import logging
 import math
 import os
@@ -135,6 +136,9 @@ class RoutePlanner:
                 cost_grid, hazard_grid, path, start, end, hazard_map_path, name
             )
             routes[name]["route_map_path"] = out
+
+        # Save JSON data
+        _save_routes_json(routes, start, end)
 
         return routes
 
@@ -332,6 +336,45 @@ def _build_route_result(
     }
 
 
+def _save_routes_json(routes: dict, start: tuple, end: tuple):
+    """Save route planning results as JSON for the dashboard."""
+    os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+    out_path = os.path.join(config.PROCESSED_DIR, "routes.json")
+
+    route_list = []
+    for name in ("fastest", "safest", "balanced"):
+        rd = routes.get(name, {})
+        route_list.append({
+            "name": rd.get("name", name.capitalize()),
+            "path": rd.get("path", []),
+            "stats": {
+                "path_length_cells": rd.get("path_length_cells", 0),
+                "distance_cm": rd.get("distance_cm", 0),
+                "max_shadow_exposure_pct": rd.get("max_shadow_exposure_pct", 0),
+                "hazards_near_path": rd.get("hazards_near_path", 0),
+                "nearest_hazard_distance_cells": rd.get("nearest_hazard_distance_cells", 0),
+                "risk_level": rd.get("risk_level", "LOW"),
+                "total_cost": rd.get("total_cost", 0),
+                "status": rd.get("status", "no_path"),
+            },
+            "color": rd.get("color", "#ffffff"),
+        })
+
+    data = {
+        "routes": route_list,
+        "start": list(start),
+        "end": list(end),
+        "selected": "safest",
+        "constrained": None,
+    }
+
+    try:
+        with open(out_path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save routes.json: {e}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # A* implementation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -527,8 +570,8 @@ def _draw_start_end_markers(base: np.ndarray, start: tuple, end: tuple, cell_px:
         cv2.circle(base, (cx, cy), cell_px // 3, colour, -1)
         cv2.putText(base, label, (cx - 6, cy + 6),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
-    _marker(start, "S", (0, 180, 0))
-    _marker(end,   "E", (0, 0, 200))
+    _marker(start, "L", (0, 180, 0))    # Landing site (green)
+    _marker(end,   "T", (0, 0, 200))    # Target (red)
 
 
 def _build_base_canvas(

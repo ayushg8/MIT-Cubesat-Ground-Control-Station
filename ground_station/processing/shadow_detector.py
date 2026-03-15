@@ -4,6 +4,7 @@
 # Shadow regions in the real image appear as dark areas. Otsu finds the optimal
 # threshold separating lit surface from shadow without manual tuning.
 
+import json
 import logging
 import os
 
@@ -93,6 +94,9 @@ class ShadowDetector:
         # Save mask image
         mask_path = _save_mask(image_path, shadow_mask, img)
 
+        # Save JSON data
+        _save_shadow_json(shadow_percentage, shadow_regions, int(otsu_val))
+
         return {
             "shadow_mask": shadow_mask,
             "shadow_mask_path": mask_path,
@@ -124,3 +128,26 @@ def _save_mask(image_path: str, shadow_mask: np.ndarray, original_bgr: np.ndarra
     cv2.imwrite(out_path, blended)
     logger.debug(f"Shadow mask saved: {out_path}")
     return out_path
+
+
+def _save_shadow_json(shadow_pct: float, regions: list, otsu_threshold: int):
+    """Save shadow analysis results as JSON for the dashboard."""
+    os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+    out_path = os.path.join(config.PROCESSED_DIR, "shadow_data.json")
+    data = {
+        "shadow_pct": round(shadow_pct, 2),
+        "otsu_threshold": otsu_threshold,
+        "regions": [
+            {
+                "id": r.get("label", i + 1),
+                "area_px": r["area_px"],
+                "centroid": [r["centroid"]["x"], r["centroid"]["y"]],
+            }
+            for i, r in enumerate(regions)
+        ],
+    }
+    try:
+        with open(out_path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save shadow_data.json: {e}")

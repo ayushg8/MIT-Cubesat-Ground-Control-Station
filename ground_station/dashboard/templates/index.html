@@ -5,953 +5,744 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MuraltZ GCS — Mission Operations</title>
 <style>
-/* ── Reset & Base ───────────────────────────────────────────────────────── */
+/* ══ RESET ════════════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg:         #0a0e17;
-  --bg2:        #111827;
-  --bg3:        #1a2233;
-  --border:     #2a3040;
-  --border2:    #3a4055;
-  --cyan:       #00d4ff;
-  --cyan-dim:   #007a99;
-  --amber:      #ff9500;
-  --amber-dim:  #994800;
-  --green:      #00c875;
-  --red:        #ff3b3b;
-  --text:       #c8d0e0;
-  --text-dim:   #6b7280;
-  --text-bright:#e8eaf0;
-  --mono:       "SF Mono", "Fira Mono", "Consolas", monospace;
-  --sans:       "Inter", "Source Sans Pro", system-ui, sans-serif;
-}
-
-html, body {
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
+html, body { height: 100%; }
+body {
+  background: #0a0e17;
+  color: #e0e0e0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.4;
   overflow-x: hidden;
 }
+:root {
+  --bg:    #0a0e17;
+  --panel: #141a26;
+  --border:#3a3f4b;
+  --cyan:  #00d4ff;
+  --green: #00ff88;
+  --amber: #ffaa00;
+  --red:   #ff4444;
+  --dim:   #888888;
+  --txt:   #e0e0e0;
+  --bright:#ffffff;
+  --mono:  Consolas, 'Courier New', monospace;
+}
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
-#header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  height: 44px;
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--border); }
+::-webkit-scrollbar-thumb { background: #5a6070; }
+
+/* ══ TOP BAR ══════════════════════════════════════════════════════════════════ */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  height: 50px; background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
 }
-#header .title {
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.12em;
-  color: var(--cyan);
-  text-transform: uppercase;
+#topbar .brand {
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  color: var(--cyan); letter-spacing: 0.08em; white-space: nowrap;
 }
-#header .subtitle {
-  font-size: 11px;
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+#topbar .brand small {
+  font-size: 9px; color: var(--dim); font-weight: 400; letter-spacing: 0.04em; margin-left: 8px;
 }
-#server-time {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-dim);
+.tb-center {
+  display: flex; align-items: center; gap: 16px; margin-left: auto;
 }
-#conn-dot {
-  display: inline-block;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  margin-right: 6px;
-  vertical-align: middle;
-  transition: background 0.3s;
+#mc-state-value {
+  font-family: var(--mono); font-size: 22px; font-weight: 700;
+  letter-spacing: 0.06em; color: var(--dim); transition: color 0.3s;
 }
+#mc-pass-value {
+  font-family: var(--mono); font-size: 14px; color: var(--bright);
+}
+.tb-label { font-family: var(--mono); font-size: 8px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.tb-controls {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+}
+.tb-div { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+
+/* ── Buttons (global) ─────────────────────────────────────────────────────── */
+button, .btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); color: var(--txt);
+  padding: 6px 12px; transition: all 0.15s; white-space: nowrap;
+}
+button:hover, .btn:hover {
+  border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3);
+}
+button:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none !important; border-color: var(--border) !important; }
+button.ok { border-color: var(--green) !important; color: var(--green) !important; }
+button.fail { border-color: var(--red) !important; color: var(--red) !important; }
+button.active-start { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.06); }
+button.active-end   { border-color: var(--red);   color: var(--red);   background: rgba(255,68,68,0.06); }
+.btn-danger { border-color: var(--red) !important; color: var(--red) !important; }
+.btn-warn   { border-color: var(--amber) !important; color: var(--amber) !important; }
+.btn-cyan   { border-color: var(--cyan) !important; color: var(--cyan) !important; }
+.btn-recalc {
+  width: 100%; padding: 8px; font-family: var(--mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;
+  background: var(--cyan); color: var(--bg); border: none; font-weight: 700;
+}
+.btn-recalc:hover { box-shadow: 0 0 12px rgba(0,212,255,0.5); }
+.btn-recalc:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Inputs ───────────────────────────────────────────────────────────────── */
+input[type=number], input[type=text] {
+  font-family: var(--mono); font-size: 11px; color: var(--bright);
+  background: var(--bg); border: 1px solid var(--border); padding: 4px 6px; width: 40px;
+}
+input.active-input { border-color: var(--cyan); }
+
+/* ── Status dots ──────────────────────────────────────────────────────────── */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.dot-green { background: var(--green); }
+.dot-amber { background: var(--amber); }
+.dot-red   { background: var(--red); }
+.dot-cyan  { background: var(--cyan); box-shadow: 0 0 4px var(--cyan); }
+.dot-gray  { background: #666; }
+#conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 4px; }
 #conn-dot.live { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
 
-/* ── Grid Layout ─────────────────────────────────────────────────────────── */
-#grid {
-  display: grid;
-  grid-template-columns: 260px 260px 1fr 1fr;
-  grid-template-rows: auto;
-  gap: 1px;
-  background: var(--border);
-  padding: 1px;
-  min-height: calc(100vh - 44px);
+/* ── MC bar elements ──────────────────────────────────────────────────────── */
+#mc-feedback {
+  font-family: var(--mono); font-size: 10px; max-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#mc-feedback.ok   { color: var(--green); }
+#mc-feedback.fail { color: var(--red); }
+.mc-num-input { width: 32px !important; text-align: center; }
+#mc-connect-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+#mc-connect-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ══ LAYOUT ═══════════════════════════════════════════════════════════════════ */
+#main {
+  margin-top: 50px; display: flex; min-height: calc(100vh - 50px);
+}
+#col-left {
+  width: 60%; min-width: 600px; padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+  border-right: 1px solid var(--border);
+}
+#col-right {
+  width: 40%; padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto;
 }
 
-/* ── Panel ───────────────────────────────────────────────────────────────── */
-.panel {
-  background: var(--bg2);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+/* ── Panels ───────────────────────────────────────────────────────────────── */
+.pnl {
+  background: var(--panel); border: 1px solid var(--border);
 }
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg3);
-  flex-shrink: 0;
+.pnl-hdr {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
 }
-.panel-title {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--text-dim);
-  text-transform: uppercase;
+.pnl-title {
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.1em; font-weight: 400;
 }
-.panel-badge {
-  font-family: var(--mono);
-  font-size: 9px;
-  padding: 1px 6px;
-  border: 1px solid var(--border2);
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.pnl-badge {
+  margin-left: auto; font-family: var(--mono); font-size: 9px;
+  padding: 2px 8px; border: 1px solid var(--border); color: var(--dim);
 }
-.panel-badge.core {
-  border-color: var(--amber);
-  color: var(--amber);
-}
-.panel-body {
-  padding: 10px;
-  flex: 1;
-  overflow: auto;
-}
+.pnl-badge.core { border-color: var(--amber); color: var(--amber); }
+.pnl-body { padding: 8px; }
 
-/* ── Status dot ──────────────────────────────────────────────────────────── */
-.dot {
-  display: inline-block;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  margin-right: 5px;
-  vertical-align: middle;
-  flex-shrink: 0;
-}
-.dot-cyan   { background: var(--cyan);  box-shadow: 0 0 4px var(--cyan); }
-.dot-amber  { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
-.dot-green  { background: var(--green); box-shadow: 0 0 4px var(--green); }
-.dot-red    { background: var(--red);   box-shadow: 0 0 4px var(--red); }
-.dot-gray   { background: var(--text-dim); }
-
-/* ── KV rows ─────────────────────────────────────────────────────────────── */
-.kv { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--border); }
-.kv:last-child { border-bottom: none; }
-.kv .k { color: var(--text-dim); font-size: 11px; }
-.kv .v { font-family: var(--mono); font-size: 11px; color: var(--text-bright); text-align: right; }
-.kv .v.warn { color: var(--amber); }
+/* ── KV rows ──────────────────────────────────────────────────────────────── */
+.kv { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #1a2030; }
+.kv .k { color: var(--dim); font-family: var(--mono); font-size: 11px; }
+.kv .v { color: var(--bright); font-family: var(--mono); font-size: 11px; text-align: right; }
+.kv .v.warn  { color: var(--amber); }
 .kv .v.alert { color: var(--red); }
 
-/* ── Progress bar ────────────────────────────────────────────────────────── */
-.prog-track {
-  height: 6px;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  margin: 6px 0;
-  position: relative;
-}
-.prog-fill {
-  height: 100%;
-  background: var(--cyan);
-  transition: width 0.5s;
-  width: 0%;
-}
+/* ── Progress bar ─────────────────────────────────────────────────────────── */
+.prog-track { background: var(--border); height: 6px; width: 100%; position: relative; }
+.prog-fill  { height: 100%; background: var(--cyan); transition: width 0.5s; }
 
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
-.btn {
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 5px 10px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: border-color 0.15s, color 0.15s;
+/* ══ COST HEATMAP (centerpiece) ═══════════════════════════════════════════════ */
+#heatmap-section { flex: 0 0 auto; }
+#heatmap-wrap { position: relative; display: inline-block; }
+#cost-heatmap-canvas { display: block; cursor: crosshair; background: var(--bg); }
+#heatmap-tooltip {
+  position: absolute; pointer-events: none; display: none;
+  background: rgba(10,14,23,0.95); border: 1px solid var(--cyan);
+  color: var(--bright); font-family: var(--mono); font-size: 10px;
+  padding: 4px 8px; white-space: nowrap; z-index: 100;
 }
-.btn:hover   { border-color: var(--cyan); color: var(--cyan); }
-.btn.amber   { border-color: var(--amber-dim); color: var(--amber); }
-.btn.amber:hover { border-color: var(--amber); }
-.btn.danger  { border-color: #5a1a1a; color: var(--red); }
-.btn.danger:hover { border-color: var(--red); }
-.btn.full    { width: 100%; margin-bottom: 5px; }
-.btn.ok      { border-color: var(--green) !important; color: var(--green) !important; }
-.btn.fail    { border-color: var(--red)   !important; color: var(--red)   !important; }
-
-input.cmd-input {
-  background: var(--bg);
-  border: 1px solid var(--border2);
-  color: var(--text-bright);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 7px;
-  width: 100%;
-  outline: none;
+.heatmap-legend {
+  display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0;
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
 }
-input.cmd-input:focus { border-color: var(--cyan); }
+.hl-item { display: flex; align-items: center; gap: 3px; }
+.hl-swatch { display: inline-block; width: 10px; height: 10px; }
 
-.cmd-row { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }
-.cmd-row input { flex: 1; }
-.cmd-row .btn { flex-shrink: 0; white-space: nowrap; }
-.cmd-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase;
-             letter-spacing: 0.08em; margin-bottom: 3px; margin-top: 7px; }
+/* ── Route endpoint inputs ────────────────────────────────────────────────── */
+.ep-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ep-label { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.ep-label.start { color: var(--green); }
+.ep-label.end   { color: var(--red); }
+.ep-input { width: 36px !important; text-align: center; font-size: 11px !important; }
+.ep-input.start-input { border-color: rgba(0,255,136,0.3); }
+.ep-input.end-input   { border-color: rgba(255,68,68,0.3); }
 
-/* ── Images ──────────────────────────────────────────────────────────────── */
-.map-img {
-  width: 100%;
-  border: 1px solid var(--border2);
-  display: block;
-  background: var(--bg3);
-  min-height: 80px;
-}
-.map-img.change-active { border-color: var(--amber); box-shadow: 0 0 6px var(--amber-dim); }
-.img-placeholder {
-  width: 100%; min-height: 80px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim); font-size: 11px; font-family: var(--mono);
-  letter-spacing: 0.06em;
-}
-
-/* ── Coverage canvas ─────────────────────────────────────────────────────── */
-#coverage-canvas {
-  display: block;
-  width: 100%;
-  border: 1px solid var(--border2);
-  image-rendering: pixelated;
-}
-
-/* ── Quality log table ───────────────────────────────────────────────────── */
-.q-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 10px;
-}
-.q-table th {
-  background: var(--bg3);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border2);
-  text-align: left;
-  position: sticky;
-  top: 0;
-}
-.q-table td {
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
-}
-.q-table tr:nth-child(even) td { background: #0d1220; }
-.q-table tr:hover td { background: #14203a; }
-.pass-ok   { color: var(--green); }
-.pass-fail { color: var(--red); }
-
-/* ── Event log ───────────────────────────────────────────────────────────── */
-#event-log {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.6;
-}
-#event-log .line-err  { color: var(--red); }
-#event-log .line-warn { color: var(--amber); }
-#event-log .line-info { color: var(--text-dim); }
-
-/* ── Change map panel highlight ──────────────────────────────────────────── */
-.panel.core-panel .panel-header { border-bottom-color: var(--amber-dim); }
-.panel.core-panel { border: 1px solid var(--amber-dim); }
-
-/* ── Column span helpers ─────────────────────────────────────────────────── */
-.col-span-2 { grid-column: span 2; }
-.col-span-3 { grid-column: span 3; }
-.col-span-4 { grid-column: span 4; }
-
-/* ── Section dividers in panels ──────────────────────────────────────────── */
-.divider { border: none; border-top: 1px solid var(--border); margin: 7px 0; }
-
-.note { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); }
-.note.warn { color: var(--amber); }
-
-/* ── Route planning section ──────────────────────────────────────────────── */
-.route-cards {
-  display: flex; gap: 8px; margin-top: 8px;
-}
+/* ── Route cards ──────────────────────────────────────────────────────────── */
+.route-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .route-card {
-  flex: 1;
-  border: 1px solid var(--border2);
-  background: var(--bg3);
-  padding: 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  position: relative;
-  cursor: pointer;
-  transition: border-color 0.2s;
+  flex: 1; min-width: 170px; background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); padding: 8px 10px;
+  font-family: system-ui, sans-serif; font-size: 11px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.route-card.selected-card { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan-dim); }
+.route-card.selected-card { border-color: var(--cyan); box-shadow: 0 0 6px rgba(0,212,255,0.2); }
 .route-card .rc-name {
-  font-size: 11px;
-  font-weight: bold;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  margin-bottom: 6px; display: flex; align-items: center; gap: 5px; letter-spacing: 0.04em;
 }
-.route-card .rc-dot {
-  display: inline-block;
-  width: 10px; height: 10px;
-  border-radius: 50%;
+.route-card .rc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.route-card .rc-kv { display: flex; justify-content: space-between; padding: 2px 0; color: var(--dim); }
+.route-card .rc-kv .rv { color: var(--bright); font-family: var(--mono); font-size: 11px; }
+.route-card .rc-actions { display: flex; gap: 4px; margin-top: 6px; }
+.route-card .rc-actions button {
+  flex: 1; padding: 3px 0; font-size: 8px !important;
+  background: transparent; border: 1px solid var(--border); color: var(--dim);
 }
-.route-card .rc-kv {
-  display: flex; justify-content: space-between;
-  padding: 1px 0;
-  color: var(--text-dim);
-}
-.route-card .rc-kv .rv { color: var(--text-bright); }
-.risk-badge {
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 2px;
-  font-family: var(--mono);
-  text-transform: uppercase;
-}
+.route-card .rc-actions button:hover { border-color: var(--cyan); color: var(--cyan); }
+.route-card .rc-actions button.active-show { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.08); }
+.rc-shadow-bar { display: inline-flex; align-items: center; gap: 5px; }
+.rc-shadow-track { width: 40px; height: 5px; background: #1e2233; display: inline-block; overflow: hidden; }
+.rc-shadow-fill { height: 100%; }
+.route-card.constrained-card { border-left-color: #fff; min-width: 100%; }
+.route-card.constrained-card.no-path { border-left-color: var(--red); }
+.risk-badge { font-size: 9px; padding: 1px 5px; font-family: var(--mono); text-transform: uppercase; }
 .risk-LOW      { background: #003322; color: var(--green); border: 1px solid var(--green); }
 .risk-MODERATE { background: #332200; color: var(--amber); border: 1px solid var(--amber); }
 .risk-HIGH     { background: #330000; color: var(--red);   border: 1px solid var(--red); }
 
-/* ── Constraint panel ────────────────────────────────────────────────────── */
-.constraint-row {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+/* ── Constraint sliders ───────────────────────────────────────────────────── */
+.cst-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cst-row label { font-size: 11px; color: var(--dim); min-width: 140px; }
+.cst-row input[type=range] {
+  -webkit-appearance: none; appearance: none; flex: 1; height: 4px;
+  background: var(--border); outline: none;
 }
-.constraint-row label {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  min-width: 160px;
+.cst-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cyan); border: 2px solid var(--bg); cursor: pointer;
+  box-shadow: 0 0 4px rgba(0,212,255,0.4);
 }
-.constraint-row input[type=range] {
-  flex: 1;
-  accent-color: var(--cyan);
+.cst-row input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cyan); border: 2px solid var(--bg); cursor: pointer;
 }
-.constraint-row .cv {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--cyan);
-  min-width: 30px;
-  text-align: right;
+.cst-row .cv { font-family: var(--mono); font-size: 11px; color: var(--cyan); min-width: 28px; text-align: right; }
+
+/* ══ CHANGE DETECTION SLIDER ══════════════════════════════════════════════════ */
+.cs-wrap { position: relative; overflow: hidden; width: 100%; background: var(--bg); }
+.cs-wrap .cs-before, .cs-wrap .cs-after { display: block; width: 100%; height: auto; }
+.cs-wrap .cs-before { position: relative; z-index: 1; }
+.cs-wrap .cs-after-wrap {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 2; overflow: hidden;
+  clip-path: inset(0 0 0 50%);
+}
+.cs-wrap .cs-after { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; }
+.cs-wrap .cs-divider {
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cyan);
+  z-index: 4; left: 50%; transform: translateX(-50%); pointer-events: none;
+}
+.cs-wrap .cs-handle {
+  position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--cyan); border: 2px solid var(--bg); transform: translate(-50%,-50%);
+  z-index: 5; cursor: ew-resize; box-shadow: 0 0 8px rgba(0,212,255,0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.cs-wrap .cs-handle::before { content: '\25C4\25BA'; font-size: 8px; color: var(--bg); font-weight: 700; letter-spacing: -1px; }
+.cs-wrap .cs-label {
+  position: absolute; z-index: 3; font-family: var(--mono); font-size: 10px;
+  padding: 3px 8px; background: rgba(10,14,23,0.85); color: var(--bright); pointer-events: none;
+}
+.cs-wrap .cs-label-before { top: 6px; left: 6px; }
+.cs-wrap .cs-label-after  { top: 6px; right: 6px; }
+.cs-wrap .cs-bbox-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 3; pointer-events: none; }
+.cs-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px; color: var(--dim); font-family: var(--mono); font-size: 11px; text-align: center; padding: 16px;
+}
+.change-cell-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.change-cell-tab {
+  font-family: var(--mono); font-size: 9px; padding: 2px 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); color: var(--dim);
+}
+.change-cell-tab:hover { border-color: var(--red); color: var(--red); }
+.change-cell-tab.active { border-color: var(--red); color: var(--red); background: rgba(255,68,68,0.08); }
+.change-event-card {
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red);
+  padding: 6px 10px; font-family: var(--mono); font-size: 11px; color: var(--bright);
+  display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 4px;
+}
+.change-event-card:hover { border-color: var(--red); }
+.change-event-card.active-event { background: #1a1020; }
+.change-event-card .ce-id { color: var(--red); font-weight: 700; min-width: 20px; }
+.change-event-card .ce-detail { color: var(--dim); }
+.change-event-card .ce-conf { margin-left: auto; }
+.change-warning { background: #332200; border: 1px solid var(--amber); padding: 6px 10px; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--amber); }
+
+/* ══ COVERAGE GRID ════════════════════════════════════════════════════════════ */
+#coverage-canvas { display: block; width: 100%; background: var(--bg); }
+.cov-tl-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 8px; color: #6b7280; text-transform: uppercase;
+}
+.cov-tl-seg.active { background: #004422 !important; }
+.cov-tl-seg.active span { color: var(--green); }
+
+/* ── Images ───────────────────────────────────────────────────────────────── */
+.map-img { display: none; width: 100%; border: 1px solid var(--border); }
+.img-placeholder {
+  width: 100%; min-height: 60px; background: var(--panel); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dim); font-size: 11px; font-family: var(--mono);
 }
 
-/* ── Cost heatmap ────────────────────────────────────────────────────────── */
-#cost-heatmap-canvas {
-  display: block;
-  border: 1px solid var(--border2);
-  image-rendering: pixelated;
+/* ── Shadow summary ───────────────────────────────────────────────────────── */
+.shadow-summary {
+  font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 8px;
+  background: var(--panel); border: 1px solid var(--border);
 }
-.heatmap-legend {
-  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;
-  font-family: var(--mono); font-size: 9px; color: var(--text-dim);
-}
-.heatmap-legend .hl-item {
-  display: flex; align-items: center; gap: 3px;
-}
-.hl-swatch {
-  display: inline-block; width: 10px; height: 10px; border: 1px solid #444;
-}
+.shadow-summary b { color: var(--bright); }
 
-/* ── Route warning banner ────────────────────────────────────────────────── */
-#route-change-warning {
-  display: none;
-  background: #332200;
-  border: 1px solid var(--amber);
-  color: var(--amber);
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 5px 10px;
-  margin-bottom: 6px;
-}
-
-/* ── Mission Control bar ─────────────────────────────────────────────────── */
-#mission-control {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 10px 16px;
-  background: var(--bg2);
-  border-bottom: 2px solid var(--border2);
-}
-#mc-state-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 110px;
-}
-#mc-state-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 2px;
-}
-#mc-state-value {
-  font-family: var(--mono);
-  font-size: 20px;
-  font-weight: bold;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-  transition: color 0.3s;
-}
-#mc-pass-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 60px;
-}
-#mc-pass-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 2px;
-}
-#mc-pass-value {
-  font-family: var(--mono);
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--text-bright);
-}
-.mc-divider {
-  width: 1px;
-  height: 40px;
-  background: var(--border2);
-  flex-shrink: 0;
-}
-.mc-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: bold;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 10px 22px;
-  border: 2px solid var(--border2);
-  background: var(--bg3);
-  color: var(--text-dim);
-  cursor: not-allowed;
-  transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
-  white-space: nowrap;
-}
-.mc-btn.active-start {
-  border-color: var(--cyan);
-  color: var(--cyan);
-  background: #001a22;
-  cursor: pointer;
-  box-shadow: 0 0 10px var(--cyan-dim);
-}
-.mc-btn.active-start:hover {
-  background: #002d3a;
-  box-shadow: 0 0 16px var(--cyan);
-}
-.mc-btn.active-end {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: #1a0e00;
-  cursor: pointer;
-  box-shadow: 0 0 8px var(--amber-dim);
-}
-.mc-btn.active-end:hover {
-  background: #2d1a00;
-}
-#mc-cell-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-#mc-cell-group label {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.mc-num-input {
-  width: 44px;
-  background: var(--bg);
-  border: 1px solid var(--border2);
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 13px;
-  padding: 6px 6px;
-  text-align: center;
-  outline: none;
-  transition: border-color 0.2s, color 0.2s;
-}
-.mc-num-input.active-input {
-  border-color: var(--cyan);
-  color: var(--text-bright);
-}
-#mc-feedback {
-  font-family: var(--mono);
-  font-size: 10px;
-  min-width: 80px;
-  max-width: 340px;
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-  white-space: normal;
-  line-height: 1.3;
-}
-#mc-feedback.ok   { color: var(--green); }
-#mc-feedback.fail { color: var(--red); }
-#mc-connect-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-#mc-connect-group label {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-#mc-ip-input {
-  width: 130px;
-  background: var(--bg);
-  border: 1px solid var(--border2);
-  color: var(--text-bright);
-  font-family: var(--mono);
-  font-size: 12px;
-  padding: 6px 8px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-#mc-ip-input:focus { border-color: var(--cyan); }
-#mc-connect-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  flex-shrink: 0;
-  transition: background 0.3s;
-}
-#mc-connect-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-
-/* ── Hazard quadrant table ───────────────────────────────────────────────── */
-.quad-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 10px;
-}
+/* ── Quad table ───────────────────────────────────────────────────────────── */
+.quad-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
 .quad-table th {
-  background: var(--bg3);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--border2);
-  text-align: left;
+  text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim);
+  font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em;
 }
-.quad-table td {
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+.quad-table td { padding: 4px 6px; border-bottom: 1px solid #1a2030; }
+.quad-table tr:nth-child(even) td { background: #0f1520; }
+
+/* ══ BOTTOM COLLAPSIBLE SECTIONS ══════════════════════════════════════════════ */
+#bottom { padding: 0 12px 12px; }
+.collapse-section { margin-top: 8px; }
+.collapse-hdr {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 10px; background: var(--panel); border: 1px solid var(--border);
+  user-select: none;
 }
+.collapse-hdr .arrow { font-size: 10px; color: var(--dim); transition: transform 0.2s; }
+.collapse-hdr .arrow.open { transform: rotate(90deg); }
+.collapse-hdr .c-title { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.collapse-hdr .c-badge { margin-left: auto; font-family: var(--mono); font-size: 9px; padding: 1px 6px; border: 1px solid var(--border); color: var(--dim); }
+.collapse-body { display: none; border: 1px solid var(--border); border-top: none; background: var(--panel); }
+.collapse-body.open { display: block; }
+
+/* ── Telemetry horizontal layout ──────────────────────────────────────────── */
+.telem-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; padding: 8px;
+}
+.telem-group { }
+.telem-group-title { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 4px; }
+
+/* ── Quality table ────────────────────────────────────────────────────────── */
+.q-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+.q-table th { text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim); font-weight: 400; text-transform: uppercase; }
+.q-table td { padding: 3px 6px; border-bottom: 1px solid #1a2030; }
+.q-table tr:nth-child(even) td { background: #0f1520; }
+.pass-ok   { color: var(--green); }
+.pass-fail { color: var(--red); }
+
+/* ── Event log ────────────────────────────────────────────────────────────── */
+#event-log { max-height: 200px; overflow-y: auto; padding: 6px 8px; font-family: var(--mono); font-size: 10px; line-height: 1.6; }
+#event-log .line-err  { color: var(--red); }
+#event-log .line-warn { color: var(--amber); }
+#event-log .line-info { color: var(--dim); }
+
+/* ── Command panel ────────────────────────────────────────────────────────── */
+.cmd-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.cmd-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; min-width: 80px; }
+.cmd-input { width: 120px !important; font-size: 10px !important; }
+
+/* ── Route warning ────────────────────────────────────────────────────────── */
+#route-change-warning {
+  display: none; background: #332200; border: 1px solid var(--amber);
+  padding: 6px 10px; margin-bottom: 6px; font-family: var(--mono); font-size: 10px; color: var(--amber);
+}
+
+/* ── LLM bar ──────────────────────────────────────────────────────────────── */
+#llm-bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--border); margin-top: 8px;
+}
+#llm-input { flex: 1; width: auto !important; padding: 6px 8px !important; font-size: 11px !important; }
+#llm-response { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; padding: 4px 8px; min-height: 18px; }
+
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+.note { font-family: var(--mono); font-size: 9px; color: var(--dim); }
+.hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────────────── -->
-<div id="header">
-  <div>
-    <span class="title">MuraltZ GCS</span>
-    <span class="subtitle" style="margin-left:14px;">Artemis Lunar Navigator · MIT BWSI 2025-2026</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:14px;">
-    <span><span id="conn-dot"></span><span id="conn-label" style="font-size:11px;color:var(--text-dim);">CONNECTING</span></span>
-    <span id="server-time" style="font-family:var(--mono);font-size:11px;">--</span>
-  </div>
-</div>
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- TOP BAR                                                                   -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div id="topbar">
+  <div class="brand">MURALTZ GCS <small>ARTEMIS LUNAR NAVIGATOR &middot; MIT BWSI 2025-2026</small></div>
+  <span id="conn-dot"></span><span id="conn-label" style="font-family:var(--mono);font-size:9px;color:var(--dim);">OFFLINE</span>
 
-<!-- ── Mission Control bar ────────────────────────────────────────────── -->
-<div id="mission-control">
-
-  <!-- State indicator -->
-  <div id="mc-state-block">
-    <div id="mc-state-label">Sat State</div>
-    <div id="mc-state-value">--</div>
+  <div class="tb-center">
+    <div style="text-align:center;">
+      <div class="tb-label">STATE</div>
+      <div id="mc-state-value">--</div>
+    </div>
+    <div class="tb-div"></div>
+    <div style="text-align:center;">
+      <div class="tb-label">PASS</div>
+      <div id="mc-pass-value">--</div>
+    </div>
   </div>
 
-  <!-- Pass counter -->
-  <div id="mc-pass-block">
-    <div id="mc-pass-label">Pass</div>
-    <div id="mc-pass-value">--</div>
-  </div>
-
-  <div class="mc-divider"></div>
-
-  <!-- START PASS -->
-  <button id="mc-btn-start" class="mc-btn" disabled
-          onclick="mcStartPass(this)">▶ START PASS</button>
-
-  <!-- END PASS -->
-  <button id="mc-btn-end" class="mc-btn" disabled
-          onclick="mcEndPass(this)">■ END PASS</button>
-
-  <div class="mc-divider"></div>
-
-  <!-- Grid cell selector -->
-  <div id="mc-cell-group">
-    <label>Cell</label>
-    <input id="mc-row" class="mc-num-input" type="number" min="0" max="7" value="0" disabled>
-    <span style="font-family:var(--mono);color:var(--text-dim);">,</span>
-    <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled>
-    <button id="mc-btn-cell" class="mc-btn" disabled
-            onclick="mcSetCell(this)">SET CELL</button>
-  </div>
-
-  <!-- Feedback -->
-  <div id="mc-feedback"></div>
-
-  <div class="mc-divider"></div>
-
-  <!-- CubeSat IP connect -->
-  <div id="mc-connect-group">
-    <label>CubeSat IP</label>
-    <input id="mc-ip-input" type="text" placeholder="192.168.x.x" spellcheck="false" value="{{ cubesat_ip }}">
-    <button class="mc-btn active-start" style="padding:10px 14px;" onclick="mcConnect()">CONNECT</button>
+  <div class="tb-controls">
+    <button id="mc-btn-start" disabled onclick="mcStartPass(this)">&#9654; START PASS</button>
+    <button id="mc-btn-end" disabled onclick="mcEndPass(this)">&#9632; END PASS</button>
+    <div class="tb-div"></div>
+    <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">CELL</span>
+    <input id="mc-row" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
+    <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
+    <button id="mc-btn-cell" disabled onclick="mcSetCell(this)">SET</button>
+    <div class="tb-div"></div>
+    <button id="mc-btn-discover" class="active-start" onclick="mcDiscover()" style="display:none;">FIND</button>
+    <button id="mc-btn-pi-start" onclick="mcPiStart()" style="display:none;">START SW</button>
+    <button id="mc-btn-pi-stop" onclick="mcPiStop()" style="display:none;">STOP SW</button>
+    <span id="mc-pi-ip" style="font-family:var(--mono);font-size:10px;color:var(--dim);"></span>
     <div id="mc-connect-dot"></div>
+    <div id="mc-feedback"></div>
+    <div class="tb-div"></div>
+    <button class="btn-danger" onclick="mcNewSession()">NEW SESSION</button>
+    <button class="btn-cyan" onclick="mcExport()">EXPORT</button>
   </div>
-
 </div>
 
-<!-- ── Main grid ──────────────────────────────────────────────────────── -->
-<div id="grid">
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN TWO-COLUMN AREA                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div id="main">
 
-  <!-- 1. Mission Status -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Mission Status</span>
-      <span class="panel-badge" id="sat-state-badge">--</span>
-    </div>
-    <div class="panel-body">
-      <div class="kv"><span class="k">State</span>      <span class="v" id="s-state">--</span></div>
-      <div class="kv"><span class="k">Pass</span>       <span class="v" id="s-pass">--</span></div>
-      <div class="kv"><span class="k">Images RX</span> <span class="v" id="s-images">--</span></div>
-      <div class="kv"><span class="k">Corrupted</span> <span class="v" id="s-corrupt">--</span></div>
-      <div class="kv"><span class="k">Coverage</span>  <span class="v" id="s-coverage">--</span></div>
-      <div class="kv"><span class="k">Route</span>     <span class="v" id="s-route">--</span></div>
-      <div class="kv"><span class="k">Changes</span>   <span class="v" id="s-changes">--</span></div>
-      <div class="kv"><span class="k">Updated</span>   <span class="v" id="s-updated" style="font-size:10px;">--</span></div>
-    </div>
-  </div>
+<!-- ─── LEFT COLUMN (60%): Heatmap + Routes + Constraints ────────────────── -->
+<div id="col-left">
 
-  <!-- 2. Telemetry -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Telemetry</span>
+  <!-- 1. COST HEATMAP — THE CENTERPIECE -->
+  <div class="pnl" id="heatmap-section">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Terrain Cost Map</span>
+      <span class="pnl-badge" id="route-status-badge" style="border-color:var(--dim);color:var(--dim);">NO ROUTES</span>
     </div>
-    <div class="panel-body">
-      <div class="kv"><span class="k">Sat State</span>  <span class="v" id="t-state">--</span></div>
-      <div class="kv"><span class="k">Roll</span>       <span class="v" id="t-roll">--</span></div>
-      <div class="kv"><span class="k">Pitch</span>      <span class="v" id="t-pitch">--</span></div>
-      <div class="kv"><span class="k">CPU Temp</span>   <span class="v" id="t-temp">--</span></div>
-      <div class="kv"><span class="k">Storage</span>    <span class="v" id="t-storage">--</span></div>
-      <div class="kv"><span class="k">Queue</span>      <span class="v" id="t-queue">--</span></div>
-      <div class="kv"><span class="k">Nadir Lock</span> <span class="v" id="t-nadir">--</span></div>
-      <div class="kv"><span class="k">Uptime</span>     <span class="v" id="t-uptime">--</span></div>
-    </div>
-  </div>
-
-  <!-- 3. Downlink Progress (spans cols 3-4) -->
-  <div class="panel col-span-2">
-    <div class="panel-header">
-      <span class="panel-title">Downlink</span>
-      <span class="panel-badge" id="dl-rate-badge">-- B/s</span>
-    </div>
-    <div class="panel-body">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">BYTES RECEIVED</span>
-        <span style="font-family:var(--mono);font-size:11px;" id="dl-bytes">-- / 72,000</span>
-      </div>
-      <div class="prog-track"><div class="prog-fill" id="dl-bar"></div></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-top:10px;">
-        <div>
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Rate</div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--cyan);" id="dl-rate">--</div>
-          <div style="font-size:10px;color:var(--text-dim);">B/s</div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Total</div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--cyan);" id="dl-total-bytes">--</div>
-          <div style="font-size:10px;color:var(--text-dim);">bytes</div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Failed</div>
-          <div style="font-family:var(--mono);font-size:14px;" id="dl-failed">--</div>
-          <div style="font-size:10px;color:var(--text-dim);">transfers</div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Cmds</div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--green);" id="ul-cmds">--</div>
-          <div style="font-size:10px;color:var(--text-dim);">acked</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 4. Command Panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Uplink / Commands</span>
-    </div>
-    <div class="panel-body">
-      <button class="btn full amber" onclick="sendCmd({cmd:'enter_safe_mode'}, this)">SAFE MODE</button>
-      <button class="btn full" onclick="sendCmd({cmd:'resume_normal'}, this)">RESUME NORMAL</button>
-      <button class="btn full" onclick="sendCmd({cmd:'status_request'}, this)">REQUEST STATUS</button>
-      <button class="btn full" onclick="sendCmd({cmd:'retry_downlink'}, this)">RETRY DOWNLINK</button>
-
-      <hr class="divider">
-
-      <div class="cmd-label">Retransmit image</div>
-      <div class="cmd-row">
-        <input id="in-retransmit" class="cmd-input" placeholder="pass1_img00_20260315_143000">
-        <button class="btn" onclick="cmdRetransmit(this)">SEND</button>
-      </div>
-
-      <div class="cmd-label">Priority cell (row, col)</div>
-      <div class="cmd-row">
-        <input id="in-pri-r" class="cmd-input" placeholder="R" style="max-width:42px;">
-        <input id="in-pri-c" class="cmd-input" placeholder="C" style="max-width:42px;">
-        <button class="btn" onclick="cmdPriorityCell(this)">SET</button>
-      </div>
-
-      <div class="cmd-label">Set current cell (row, col)</div>
-      <div class="cmd-row">
-        <input id="in-cell-r" class="cmd-input" placeholder="R" style="max-width:42px;">
-        <input id="in-cell-c" class="cmd-input" placeholder="C" style="max-width:42px;">
-        <button class="btn" onclick="cmdSetCell(this)">SET</button>
-      </div>
-
-      <div class="cmd-label">Adjust exposure (µs)</div>
-      <div class="cmd-row">
-        <input id="in-exposure" class="cmd-input" placeholder="e.g. 20000">
-        <button class="btn" onclick="cmdExposure(this)">SET</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. Latest Image -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Latest Image</span>
-    </div>
-    <div class="panel-body" style="padding:6px;">
-      <img id="img-latest" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-latest-ph" class="img-placeholder">NO IMAGE</div>
-    </div>
-  </div>
-
-  <!-- 6. Hazard Map -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Hazard Map</span>
-    </div>
-    <div class="panel-body" style="padding:6px;">
-      <img id="img-hazard" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-hazard-ph" class="img-placeholder">NO DATA</div>
-    </div>
-  </div>
-
-  <!-- 7. Change Map — CORE DATA PRODUCT -->
-  <div class="panel core-panel col-span-2">
-    <div class="panel-header">
-      <span class="panel-title">Change Map</span>
-      <span class="panel-badge core">CORE DATA PRODUCT</span>
-    </div>
-    <div class="panel-body" style="padding:6px;">
-      <div id="change-summary" style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:6px;display:none;"></div>
-      <img id="img-change" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-change-ph" class="img-placeholder">AWAITING SECOND PASS</div>
-    </div>
-  </div>
-
-  <!-- 8. Route Planning — full-width section -->
-  <div class="panel col-span-4">
-    <div class="panel-header">
-      <span class="panel-title">Route Planning</span>
-      <span class="panel-badge" id="route-status-badge">--</span>
-    </div>
-    <div class="panel-body" style="padding:10px;">
-
-      <!-- Change→Route impact warning -->
+    <div class="pnl-body">
+      <!-- Route warning banner -->
       <div id="route-change-warning"></div>
+      <!-- Endpoint controls -->
+      <div class="ep-row" style="margin-bottom:6px;">
+        <span class="ep-label start">Landing (L):</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
+        <input id="ep-start-r" class="ep-input start-input" type="number" min="0" max="7" value="0">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
+        <input id="ep-start-c" class="ep-input start-input" type="number" min="0" max="7" value="0">
+        <span class="ep-label end" style="margin-left:12px;">Target (T):</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
+        <input id="ep-end-r" class="ep-input end-input" type="number" min="0" max="7" value="7">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
+        <input id="ep-end-c" class="ep-input end-input" type="number" min="0" max="7" value="7">
+        <button onclick="planRoutes(this)" style="margin-left:8px;">PLAN ROUTES</button>
+        <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
+      </div>
+      <!-- Canvas -->
+      <div id="heatmap-wrap">
+        <canvas id="cost-heatmap-canvas" width="564" height="560"></canvas>
+        <div id="heatmap-tooltip"></div>
+      </div>
+      <div class="heatmap-legend" style="margin-top:4px;">
+        <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;opacity:0.6;"></span>Safe(1)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#ffaa00;opacity:0.6;"></span>Mod(5)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#4488ff;opacity:0.6;"></span>Shadow(15)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;opacity:0.6;"></span>Hazard(20)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid #ff4444;"></span>Impass</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurv</div>
+      </div>
+      <div class="note" style="margin-top:2px;">Click: 1st = Landing <span style="color:var(--green);">L</span>, 2nd = Target <span style="color:var(--red);">T</span>, 3rd = Reset</div>
+    </div>
+  </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+  <!-- 2. ROUTE COMPARISON CARDS -->
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Route Comparison</span>
+    </div>
+    <div class="pnl-body">
+      <div class="route-cards" id="route-cards"><!-- JS --></div>
+      <div id="constrained-result"></div>
+    </div>
+  </div>
 
-        <!-- A) Route Comparison View -->
-        <div style="grid-column:1/2;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Route Comparison</div>
-          <img id="img-route-comparison" class="map-img" src="" alt="" style="display:none;">
-          <div id="img-route-comparison-ph" class="img-placeholder" style="min-height:120px;">NO DATA</div>
-          <div class="route-cards" id="route-cards">
-            <!-- filled by JS -->
-          </div>
+  <!-- 3. CONSTRAINT SLIDERS + SELECTED ROUTE STATS side by side -->
+  <div style="display:flex;gap:12px;">
+    <div class="pnl" style="flex:1;">
+      <div class="pnl-hdr"><span class="pnl-title">Constraint Planner</span></div>
+      <div class="pnl-body">
+        <div class="cst-row">
+          <label>Max Shadow Exposure</label>
+          <input type="range" id="slider-shadow" min="0" max="100" value="50" oninput="el('val-shadow').textContent=this.value+'%'">
+          <span class="cv" id="val-shadow">50%</span>
         </div>
-
-        <!-- B) Constraint Panel + D) Path Stats Card -->
-        <div style="grid-column:2/3;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Constraint Planner</div>
-          <div class="constraint-row">
-            <label>Max Shadow Exposure</label>
-            <input type="range" id="slider-shadow" min="0" max="100" value="50"
-                   oninput="el('val-shadow').textContent=this.value+'%'">
-            <span class="cv" id="val-shadow">50%</span>
-          </div>
-          <div class="constraint-row">
-            <label>Min Hazard Clearance</label>
-            <input type="range" id="slider-clearance" min="0" max="3" step="1" value="1"
-                   oninput="el('val-clearance').textContent=this.value">
-            <span class="cv" id="val-clearance">1</span>
-          </div>
-          <button class="btn full" onclick="runConstrainedPlan(this)">RECALCULATE</button>
-          <div id="constrained-result" style="margin-top:6px;"></div>
-
-          <hr class="divider">
-
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Selected Route Stats</div>
-          <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">No route data yet</div>
+        <div class="cst-row">
+          <label>Min Hazard Clearance</label>
+          <input type="range" id="slider-clearance" min="0" max="3" step="1" value="1" oninput="el('val-clearance').textContent=this.value">
+          <span class="cv" id="val-clearance">1</span>
         </div>
+        <button class="btn-recalc" onclick="runConstrainedPlan(this)">RECALCULATE</button>
+      </div>
+    </div>
+    <div class="pnl" style="flex:1;">
+      <div class="pnl-hdr"><span class="pnl-title">Selected Route Stats</span></div>
+      <div class="pnl-body">
+        <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--dim);">No route data</div>
+      </div>
+    </div>
+  </div>
+</div>
 
-        <!-- C) Cost Heatmap + E) Hazard Quadrant Summary -->
-        <div style="grid-column:3/4;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Cost Heatmap</div>
-          <canvas id="cost-heatmap-canvas"></canvas>
-          <div class="heatmap-legend">
-            <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;"></span>Safe(1)</div>
-            <div class="hl-item"><span class="hl-swatch" style="background:#ffdd00;"></span>Mod(5)</div>
-            <div class="hl-item"><span class="hl-swatch" style="background:#4488ff;"></span>Shadow(15)</div>
-            <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;"></span>Hazard(20)</div>
-            <div class="hl-item"><span class="hl-swatch" style="background:#000000;"></span>Impass</div>
-            <div class="hl-item"><span class="hl-swatch" style="background:#333344;"></span>Unsurv</div>
-          </div>
+<!-- ─── RIGHT COLUMN (40%): Change + Coverage + Image + Shadow + DL ──────── -->
+<div id="col-right">
 
-          <hr class="divider">
-
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Hazard Density by Quadrant</div>
-          <table class="quad-table">
-            <thead>
-              <tr><th>Quadrant</th><th>Hazards</th><th>Shadow%</th><th>Risk</th></tr>
-            </thead>
-            <tbody id="quad-table-body">
-              <tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:6px;">No data</td></tr>
-            </tbody>
-          </table>
+  <!-- 1. CHANGE DETECTION -->
+  <div class="pnl" style="border-color:rgba(255,149,0,0.4);">
+    <div class="pnl-hdr" style="border-bottom-color:rgba(255,149,0,0.3);">
+      <span class="pnl-title">Change Detection</span>
+      <span class="pnl-badge core">CORE</span>
+    </div>
+    <div class="pnl-body">
+      <div id="change-summary" style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:4px;display:none;"></div>
+      <div id="change-cell-tabs" class="change-cell-tabs"></div>
+      <div id="change-slider" class="cs-wrap" style="display:none;">
+        <img class="cs-before" id="cs-before-img" src="" alt="Before">
+        <div class="cs-after-wrap" id="cs-after-wrap">
+          <img class="cs-after" id="cs-after-img" src="" alt="After">
         </div>
+        <div class="cs-divider" id="cs-divider"></div>
+        <div class="cs-handle" id="cs-handle"></div>
+        <span class="cs-label cs-label-before" id="cs-label-before">BEFORE</span>
+        <span class="cs-label cs-label-after" id="cs-label-after">AFTER</span>
+        <svg class="cs-bbox-overlay" id="cs-bbox-overlay"></svg>
+      </div>
+      <div id="change-slider-ph" class="cs-wrap">
+        <div class="cs-placeholder">Change detection requires 2+ passes of the same grid cell</div>
+      </div>
+      <div id="change-events-list"></div>
+      <div id="change-low-conf-warning" class="change-warning" style="display:none;"></div>
+    </div>
+  </div>
 
+  <!-- 2. COVERAGE GRID -->
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Coverage Grid</span>
+      <span class="pnl-badge" id="coverage-pct-badge">0%</span>
+    </div>
+    <div class="pnl-body">
+      <canvas id="coverage-canvas" width="340" height="340"></canvas>
+      <div id="cov-timeline" style="margin-top:6px;position:relative;height:20px;">
+        <div style="display:flex;height:14px;overflow:hidden;background:#1e2233;">
+          <div id="cov-tl-p1" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 1</span></div>
+          <div id="cov-tl-p2" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 2</span></div>
+          <div id="cov-tl-p3" class="cov-tl-seg" style="flex:1;background:#003322;"><span>Pass 3</span></div>
+        </div>
+        <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
+      </div>
+      <button style="width:100%;margin-top:4px;font-size:9px;" onclick="startCoverageAnim()">REPLAY</button>
+      <div class="note" style="margin-top:3px;">
+        <span class="dot dot-green"></span> Surveyed &nbsp;
+        <span class="dot dot-amber"></span> Change &nbsp;
+        <span class="dot dot-gray"></span> Unsurveyed
       </div>
     </div>
   </div>
 
-  <!-- 9. Coverage Map (canvas) -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Coverage Grid</span>
-      <span id="coverage-pct-badge" class="panel-badge">0%</span>
-      <button class="btn" style="font-size:9px;padding:2px 6px;" onclick="animateCoverage()">REPLAY</button>
+  <!-- 3. LATEST IMAGE -->
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Latest Image</span></div>
+    <div class="pnl-body" style="padding:4px;">
+      <img id="img-latest" class="map-img" src="" alt="">
+      <div id="img-latest-ph" class="img-placeholder" style="min-height:80px;">NO DATA</div>
     </div>
-    <div class="panel-body" style="padding:6px;">
-      <canvas id="coverage-canvas"></canvas>
-      <div class="note" style="margin-top:4px;">
-        <span class="dot dot-green"></span>Safe &nbsp;
-        <span class="dot dot-cyan"></span>Shadow &nbsp;
-        <span class="dot dot-amber"></span>Change &nbsp;
-        <span class="dot dot-red"></span>Hazard &nbsp;
-        <span class="dot dot-gray"></span>Unsurveyed
+  </div>
+
+  <!-- 4. SHADOW SUMMARY -->
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Shadow Analysis</span></div>
+    <div class="pnl-body" id="shadow-summary-body">
+      <div class="shadow-summary" id="shadow-summary-text">Shadow: -- | -- regions | Largest: --</div>
+    </div>
+  </div>
+
+  <!-- 5. DOWNLINK PROGRESS -->
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Downlink</span>
+      <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
+    </div>
+    <div class="pnl-body">
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
+        <span>Bytes Received</span>
+        <span id="dl-bytes">0 / 72,000</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="dl-bar" style="width:0%;"></div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;font-family:var(--mono);font-size:10px;">
+        <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
+        <div><div style="color:var(--dim);">Total</div><div id="dl-total-bytes" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">bytes</div></div>
+        <div><div style="color:var(--dim);">Failed</div><div id="dl-failed" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">transfers</div></div>
+        <div><div style="color:var(--dim);">Cmds</div><div id="ul-cmds" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">acked</div></div>
       </div>
     </div>
   </div>
 
-  <!-- 10. Mosaic -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Mosaic</span>
-    </div>
-    <div class="panel-body" style="padding:6px;">
-      <img id="img-mosaic" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-mosaic-ph" class="img-placeholder">3+ CELLS NEEDED</div>
-      <p class="note" style="margin-top:4px;">One image per cell (highest quality). Gaps = unsurveyed.</p>
-    </div>
-  </div>
-
-  <!-- 11. Quality Log -->
-  <div class="panel col-span-2">
-    <div class="panel-header">
-      <span class="panel-title">Quality Log</span>
-      <span class="panel-badge" id="q-count-badge">0 images</span>
-    </div>
-    <div class="panel-body" style="padding:0;overflow:auto;max-height:220px;">
-      <table class="q-table">
-        <thead>
-          <tr>
-            <th>Filename</th>
-            <th>CubeSat Score</th>
-            <th>Ground OK</th>
-            <th>Notes</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="q-table-body">
-          <tr><td colspan="5" style="color:var(--text-dim);text-align:center;padding:10px;">No images received</td></tr>
-        </tbody>
+  <!-- 6. HAZARD QUADRANT SUMMARY -->
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Hazard Density by Quadrant</span></div>
+    <div class="pnl-body" style="padding:4px;">
+      <table class="quad-table">
+        <thead><tr><th>Quadrant</th><th style="text-align:right;">Hazards</th><th style="text-align:right;">Shadow%</th><th>Risk</th></tr></thead>
+        <tbody id="quad-table-body"><tr><td colspan="4" style="color:var(--dim);text-align:center;">No data</td></tr></tbody>
       </table>
     </div>
   </div>
 
-  <!-- 12. Event Log (full width) -->
-  <div class="panel col-span-4">
-    <div class="panel-header">
-      <span class="panel-title">Event Log</span>
-      <span class="panel-badge" id="log-count-badge">0 lines</span>
+  <!-- 7. MISSION STATUS (compact) -->
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Mission Status</span>
+      <span class="pnl-badge" id="sat-state-badge">--</span>
     </div>
-    <div class="panel-body" style="padding:0;max-height:180px;overflow:auto;" id="log-scroll">
-      <div id="event-log" style="padding:6px 10px;"></div>
+    <div class="pnl-body" style="padding:4px 8px;">
+      <div class="kv"><span class="k">State</span><span class="v" id="s-state">--</span></div>
+      <div class="kv"><span class="k">Pass</span><span class="v" id="s-pass">--</span></div>
+      <div class="kv"><span class="k">Images RX</span><span class="v" id="s-images">--</span></div>
+      <div class="kv"><span class="k">Corrupted</span><span class="v" id="s-corrupt">0</span></div>
+      <div class="kv"><span class="k">Coverage</span><span class="v" id="s-coverage">--</span></div>
+      <div class="kv"><span class="k">Route</span><span class="v" id="s-route">--</span></div>
+      <div class="kv"><span class="k">Changes</span><span class="v" id="s-changes">--</span></div>
+      <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:9px;">--</span></div>
+    </div>
+  </div>
+</div>
+</div><!-- /main -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- BOTTOM: Collapsible Sections                                              -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div id="bottom">
+
+  <!-- TELEMETRY -->
+  <div class="collapse-section">
+    <div class="collapse-hdr" onclick="toggleCollapse(this)">
+      <span class="arrow">&#9654;</span>
+      <span class="c-title">Telemetry</span>
+    </div>
+    <div class="collapse-body">
+      <div class="telem-grid">
+        <div class="telem-group">
+          <div class="telem-group-title">IMU / Attitude</div>
+          <div class="kv"><span class="k">Sat State</span><span class="v" id="t-state">--</span></div>
+          <div class="kv"><span class="k">Roll</span><span class="v" id="t-roll">--</span></div>
+          <div class="kv"><span class="k">Pitch</span><span class="v" id="t-pitch">--</span></div>
+          <div class="kv"><span class="k">Nadir Lock</span><span class="v" id="t-nadir">--</span></div>
+        </div>
+        <div class="telem-group">
+          <div class="telem-group-title">System</div>
+          <div class="kv"><span class="k">CPU Temp</span><span class="v" id="t-temp">--</span></div>
+          <div class="kv"><span class="k">Storage</span><span class="v" id="t-storage">--</span></div>
+          <div class="kv"><span class="k">Queue</span><span class="v" id="t-queue">--</span></div>
+          <div class="kv"><span class="k">Uptime</span><span class="v" id="t-uptime">--</span></div>
+        </div>
+        <div class="telem-group">
+          <div class="telem-group-title">Commands</div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <button onclick="sendCmd({cmd:'enter_safe_mode'},this)" style="width:100%;font-size:9px;border-color:var(--red);color:var(--red);">SAFE MODE</button>
+            <button onclick="sendCmd({cmd:'resume_normal'},this)" style="width:100%;font-size:9px;">RESUME</button>
+            <button onclick="sendCmd({cmd:'status_request'},this)" style="width:100%;font-size:9px;">STATUS REQ</button>
+            <button onclick="sendCmd({cmd:'retry_downlink'},this)" style="width:100%;font-size:9px;">RETRY DL</button>
+          </div>
+        </div>
+        <div class="telem-group">
+          <div class="telem-group-title">Advanced</div>
+          <div class="cmd-row"><span class="cmd-label">Retransmit</span><input id="in-retransmit" class="cmd-input" type="text" placeholder="image_id"><button onclick="cmdRetransmit(this)" style="font-size:9px;">SEND</button></div>
+          <div class="cmd-row"><span class="cmd-label">Priority Cell</span><input id="in-pri-r" type="number" min="0" max="7" value="0" style="width:28px;"><input id="in-pri-c" type="number" min="0" max="7" value="0" style="width:28px;"><button onclick="cmdPriorityCell(this)" style="font-size:9px;">SET</button></div>
+          <div class="cmd-row"><span class="cmd-label">Exposure</span><input id="in-exposure" class="cmd-input" type="text" placeholder="e.g. 20000"><button onclick="cmdExposure(this)" style="font-size:9px;">SET</button></div>
+        </div>
+      </div>
     </div>
   </div>
 
-</div><!-- #grid -->
+  <!-- QUALITY LOG -->
+  <div class="collapse-section">
+    <div class="collapse-hdr" onclick="toggleCollapse(this)">
+      <span class="arrow">&#9654;</span>
+      <span class="c-title">Quality Log</span>
+      <span class="c-badge" id="q-count-badge">0 images</span>
+    </div>
+    <div class="collapse-body">
+      <div style="max-height:200px;overflow-y:auto;">
+        <table class="q-table">
+          <thead><tr><th>Filename</th><th>CubeSat Score</th><th>Ground OK</th><th>Notes</th><th>Status</th></tr></thead>
+          <tbody id="q-table-body"><tr><td colspan="5" style="color:var(--dim);text-align:center;">No images received</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
-<!-- LLM query bar at bottom (optional) -->
-<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg2);border-top:1px solid var(--border);">
-  <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);white-space:nowrap;">LLM QUERY</span>
-  <input id="llm-input" class="cmd-input" style="flex:1;" placeholder="Ask about mission state (requires local ollama)">
-  <button class="btn" onclick="sendLLM()">ASK</button>
-  <span id="llm-response" style="flex:2;font-family:var(--mono);font-size:10px;color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+  <!-- EVENT LOG -->
+  <div class="collapse-section">
+    <div class="collapse-hdr" onclick="toggleCollapse(this)">
+      <span class="arrow">&#9654;</span>
+      <span class="c-title">Event Log</span>
+      <span class="c-badge" id="log-count-badge">0 lines</span>
+    </div>
+    <div class="collapse-body">
+      <div id="event-log" style="white-space:pre-wrap;word-break:break-all;">No events yet</div>
+    </div>
+  </div>
+
+  <!-- LLM QUERY -->
+  <div id="llm-bar">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
+    <input id="llm-input" type="text" placeholder="Ask about mission state (requires local ollama)" onkeydown="if(event.key==='Enter')sendLLM()">
+    <button onclick="sendLLM()">ASK</button>
+  </div>
+  <div id="llm-response"></div>
+</div>
+
+<!-- Hidden elements needed by JS but not displayed in new layout -->
+<div style="display:none;">
+  <img id="img-hazard" src="" alt="">
+  <div id="img-hazard-ph"></div>
+  <img id="img-route-comparison" src="" alt="">
+  <div id="img-route-comparison-ph"></div>
+  <img id="img-mosaic" src="" alt="">
+  <div id="img-mosaic-ph"></div>
+  <span id="server-time"></span>
+  <input id="in-cell-r" type="number" value="0">
+  <input id="in-cell-c" type="number" value="0">
 </div>
 
 <script>
+// ─── Collapse toggle ─────────────────────────────────────────────────────────
+function toggleCollapse(hdr) {
+  const arrow = hdr.querySelector('.arrow');
+  const body = hdr.nextElementSibling;
+  const isOpen = body.classList.toggle('open');
+  arrow.classList.toggle('open', isOpen);
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 const POLL_STATUS_MS   = 2000;
 const POLL_IMAGES_MS   = 3000;
@@ -960,6 +751,7 @@ const POLL_QUALITY_MS  = 5000;
 const POLL_LOG_MS      = 3000;
 const POLL_ROUTES_MS   = 3000;
 const POLL_HEATMAP_MS  = 5000;
+const POLL_CHANGES_MS  = 3000;
 const DL_BUDGET_BYTES  = 72000;
 
 // Hazard class → CSS colour
@@ -1080,7 +872,6 @@ async function pollStatus() {
       const cSumEl = el('change-summary');
       cSumEl.style.display = 'block';
       cSumEl.textContent = `${ch.total_events} change event(s) detected · ${fmtNum(ch.total_changed_area_cm2,1)} cm² total · largest: ${fmtNum(ch.largest_change_cm2,1)} cm²`;
-      el('img-change').classList.add('change-active');
     }
 
     // ── Coverage badge ──
@@ -1089,8 +880,19 @@ async function pollStatus() {
     // ── Change→Route impact check ──
     if (_lastRouteData) checkChangeRouteImpact(d, _lastRouteData);
 
+    // ── Auto-detect CubeSat connection from live telemetry ──
+    if (t.state && t.cubesat_id && !_cubeSatConnected) {
+      _cubeSatConnected = true;
+      const dot = el('mc-connect-dot');
+      if (dot) dot.classList.add('connected');
+      const ipEl = el('mc-pi-ip');
+      if (ipEl && !ipEl.textContent) ipEl.textContent = '{{ cubesat_ip }}';
+    }
+
     // ── Mission Control panel ──
-    updateMissionControl(t.state, m.total_passes);
+    // Fall back to mission_state pass count when no telemetry
+    const passForMC = t.pass_number != null ? t.pass_number : m.total_passes || null;
+    updateMissionControl(t.state, passForMC);
 
   } catch(e) {
     el('conn-dot').className = '';
@@ -1135,9 +937,9 @@ function updateMissionControl(state, pass) {
   passEl.textContent = (pass != null && pass !== '') ? pass : '--';
 
   // Button states
-  // If no telemetry yet but IP is connected, treat as WAITING so operator can start
+  // Enable START PASS when WAITING, or when connected but no telemetry yet
   const unknownState = !s || s === '--';
-  const isWaiting = s === 'WAITING' || (unknownState && _cubeSatConnected);
+  const isWaiting = s === 'WAITING' || s === 'SAFE_MODE' || (unknownState && _cubeSatConnected);
   const isImaging = s === 'IMAGING';
 
   // START PASS — active when WAITING (or connected with unknown state)
@@ -1191,36 +993,80 @@ async function mcEndPass(btn) {
   }
 }
 
-async function mcConnect() {
-  const ip = el('mc-ip-input').value.trim();
-  if (!ip) { _mcFeedback('ENTER IP', false); return; }
-  _mcFeedback('CONNECTING…', true);
+async function mcDiscover() {
+  _mcFeedback('SCANNING NETWORK…', true);
+  el('mc-btn-discover').disabled = true;
   try {
-    const r = await fetch('/api/set_cubesat_ip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ip }),
-    });
+    const r = await fetch('/api/discover_cubesat', { method: 'POST' });
     const d = await r.json();
-    if (d.success) {
+    const dot = el('mc-connect-dot');
+    if (d.found) {
+      el('mc-pi-ip').textContent = d.ip;
       _cubeSatConnected = true;
-      const dot = el('mc-connect-dot');
-      if (d.reachable) {
+      if (d.flight_running) {
         dot.classList.add('connected');
-        _mcFeedback('LINK OK', true);
+        el('mc-btn-pi-start').style.display = 'none';
+        el('mc-btn-pi-stop').style.display = '';
+        _mcFeedback(`FOUND ${d.ip} — FLIGHT SW RUNNING`, true);
       } else {
         dot.classList.remove('connected');
-        _mcFeedback('IP SET — NO ACK', true);  // IP saved, CubeSat may not be running yet
+        el('mc-btn-pi-start').style.display = '';
+        el('mc-btn-pi-stop').style.display = 'none';
+        _mcFeedback(`FOUND ${d.ip} — FLIGHT SW NOT RUNNING`, true);
       }
-      // Unlock START PASS immediately
       updateMissionControl('', null);
     } else {
-      _mcFeedback(d.error || 'FAILED', false);
-      el('mc-connect-dot').classList.remove('connected');
+      dot.classList.remove('connected');
+      el('mc-btn-pi-start').style.display = 'none';
+      el('mc-btn-pi-stop').style.display = 'none';
+      _mcFeedback(d.error || 'NOT FOUND', false);
     }
   } catch(e) {
-    _mcFeedback('ERROR', false);
+    _mcFeedback('NETWORK ERROR', false);
   }
+  el('mc-btn-discover').disabled = false;
+}
+
+async function mcPiStart() {
+  _mcFeedback('STARTING FLIGHT SOFTWARE…', true);
+  el('mc-btn-pi-start').disabled = true;
+  try {
+    const r = await fetch('/api/pi_start', { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      el('mc-connect-dot').classList.add('connected');
+      el('mc-btn-pi-start').style.display = 'none';
+      el('mc-btn-pi-stop').style.display = '';
+      _mcFeedback(d.message, true);
+      _cubeSatConnected = true;
+      updateMissionControl('', null);
+    } else {
+      _mcFeedback(d.message || 'FAILED', false);
+    }
+  } catch(e) {
+    _mcFeedback('NETWORK ERROR', false);
+  }
+  el('mc-btn-pi-start').disabled = false;
+}
+
+async function mcPiStop() {
+  _mcFeedback('STOPPING FLIGHT SOFTWARE…', true);
+  el('mc-btn-pi-stop').disabled = true;
+  try {
+    const r = await fetch('/api/pi_stop', { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      el('mc-connect-dot').classList.remove('connected');
+      el('mc-btn-pi-stop').style.display = 'none';
+      el('mc-btn-pi-start').style.display = '';
+      _mcFeedback(d.message, true);
+    } else {
+      _mcFeedback(d.message || 'FAILED', false);
+    }
+  } catch(e) {
+    _mcFeedback('NETWORK ERROR', false);
+  }
+  el('mc-btn-pi-stop').disabled = false;
 }
 
 async function mcSetCell(btn) {
@@ -1244,6 +1090,39 @@ async function mcSetCell(btn) {
   }
 }
 
+// ─── Session management ──────────────────────────────────────────────────────
+async function mcNewSession() {
+  if (!confirm('This will delete ALL mission data. Continue?')) return;
+  try {
+    const r = await fetch('/api/reset_mission', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      _mcFeedback('MISSION RESET', true);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      _mcFeedback(d.message || 'FAILED', false);
+    }
+  } catch(e) { _mcFeedback('NETWORK ERROR', false); }
+}
+
+async function mcClearLastPass() {
+  if (!confirm('Remove data from the most recent pass?')) return;
+  try {
+    const r = await fetch('/api/clear_last_pass', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      _mcFeedback(d.message, true);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      _mcFeedback(d.message || 'FAILED', false);
+    }
+  } catch(e) { _mcFeedback('NETWORK ERROR', false); }
+}
+
+function mcExport() {
+  window.location.href = '/api/export_mission';
+}
+
 // ─── Routes poll ─────────────────────────────────────────────────────────────
 async function pollRoutes() {
   try {
@@ -1257,10 +1136,12 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
+let _hmShowOnlyRoute = null; // key of route shown solo, or null for all
+
 function renderRouteCards(routes) {
   const selected = routes.selected || 'safest';
   const names = ['fastest', 'safest', 'balanced'];
-  const colours = { fastest: '#00ff88', safest: '#ffaa00', balanced: '#ff4444' };
+  const colours = { fastest: '#00ff88', safest: '#4488ff', balanced: '#ffaa00' };
 
   const container = el('route-cards');
   container.innerHTML = '';
@@ -1268,25 +1149,38 @@ function renderRouteCards(routes) {
   for (const name of names) {
     const rd = routes[name];
     if (!rd) continue;
+
     const card = document.createElement('div');
     card.className = 'route-card' + (name === selected ? ' selected-card' : '');
-    card.onclick = () => selectRoute(name);
+    card.style.borderLeftColor = colours[name];
 
-    const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
-    const statusTxt = rd.status === 'found'
-      ? `<span class="${riskClass} risk-badge">${rd.risk_level}</span>`
-      : `<span class="risk-badge risk-HIGH">NO PATH</span>`;
+    // Shadow bar
+    const shadowPct = rd.max_shadow_exposure_pct ?? 0;
+    const barColor = shadowPct < 10 ? '#00ff88' : shadowPct < 25 ? '#ffaa00' : '#ff4444';
+    const barWidth = Math.min(100, shadowPct);
+
+    // Risk text
+    const riskLevel = rd.risk_level || 'MODERATE';
+    const riskColor = riskLevel === 'LOW' ? '#00ff88' : riskLevel === 'MODERATE' ? '#ffaa00' : '#ff4444';
+
+    const showOnlyActive = _hmShowOnlyRoute === name;
 
     card.innerHTML = `
       <div class="rc-name">
         <span class="rc-dot" style="background:${colours[name]};"></span>
-        ${rd.name || name}
-        ${statusTxt}
+        ${(rd.name || name).toUpperCase()} ROUTE
       </div>
-      <div class="rc-kv"><span>Distance</span><span class="rv">${rd.path_length_cells ?? '--'} cells / ${rd.distance_cm ?? '--'} cm</span></div>
-      <div class="rc-kv"><span>Shadow</span><span class="rv">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
-      <div class="rc-kv"><span>Hazards Near</span><span class="rv">${rd.hazards_near_path ?? '--'}</span></div>
-      <div class="rc-kv"><span>Cost</span><span class="rv">${rd.total_cost != null ? rd.total_cost.toFixed(1) : '--'}</span></div>
+      <div class="rc-kv"><span>Distance</span><span class="rv">${rd.path_length_cells ?? '--'} cells</span></div>
+      <div class="rc-kv"><span>Shadow</span><span class="rv rc-shadow-bar">
+        <span class="rc-shadow-track"><span class="rc-shadow-fill" style="width:${barWidth}%;background:${barColor};"></span></span>
+        ${shadowPct.toFixed(1)}%
+      </span></div>
+      <div class="rc-kv"><span>Hazards</span><span class="rv">${rd.hazards_near_path ?? 0} nearby</span></div>
+      <div class="rc-kv"><span>Risk</span><span class="rv" style="color:${riskColor};font-weight:700;">${riskLevel}</span></div>
+      <div class="rc-actions">
+        <button onclick="event.stopPropagation();selectRoute('${name}')">SELECT</button>
+        <button class="${showOnlyActive ? 'active-show' : ''}" onclick="event.stopPropagation();toggleShowOnly('${name}')">SHOW ONLY</button>
+      </div>
     `;
     container.appendChild(card);
   }
@@ -1305,6 +1199,12 @@ function renderRouteCards(routes) {
   }
 }
 
+function toggleShowOnly(name) {
+  _hmShowOnlyRoute = (_hmShowOnlyRoute === name) ? null : name;
+  _hmNeedsRedraw = true;
+  if (_lastRouteData) renderRouteCards(_lastRouteData);
+}
+
 function renderPathStatsCard(routes) {
   const selected = routes.selected || 'safest';
   const rd = routes[selected];
@@ -1319,9 +1219,11 @@ function renderPathStatsCard(routes) {
   const rec = recMap[rd.risk_level] || '--';
   const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
 
+  const startPt = getRouteStart();
+  const endPt = getRouteEnd();
   statsEl.innerHTML = `
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Route</span><span class="v">${rd.name || selected}</span></div>
-    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Start→End</span><span class="v">[0,0]→[7,7]</span></div>
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Landing→Target</span><span class="v">[${startPt[0]},${startPt[1]}]→[${endPt[0]},${endPt[1]}]</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Distance</span><span class="v">${rd.path_length_cells} cells / ${rd.distance_cm} cm</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Shadow %</span><span class="v">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Hazards Near</span><span class="v">${rd.hazards_near_path}</span></div>
@@ -1351,94 +1253,436 @@ async function runConstrainedPlan(btn) {
     const r = await fetch('/api/plan_constrained', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({max_shadow_pct: maxShadow, min_hazard_clearance: clearance}),
+      body: JSON.stringify({max_shadow_pct: maxShadow, min_hazard_clearance: clearance, start: getRouteStart(), end: getRouteEnd()}),
     });
     const rd = await r.json();
     const resultEl = el('constrained-result');
     if (rd.status === 'found') {
-      const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
+      const shadowPct = rd.max_shadow_exposure_pct ?? 0;
+      const barColor = shadowPct < 10 ? '#00ff88' : shadowPct < 25 ? '#ffaa00' : '#ff4444';
+      const barWidth = Math.min(100, shadowPct);
+      const riskLevel = rd.risk_level || 'MODERATE';
+      const riskColor = riskLevel === 'LOW' ? '#00ff88' : riskLevel === 'MODERATE' ? '#ffaa00' : '#ff4444';
       resultEl.innerHTML = `
-        <div style="border:1px solid var(--green);padding:6px;font-family:var(--mono);font-size:10px;">
-          <div style="color:var(--green);margin-bottom:4px;">FEASIBLE ROUTE FOUND</div>
-          <div class="rc-kv"><span>Length</span><span class="rv">${rd.path_length_cells} cells / ${rd.distance_cm} cm</span></div>
-          <div class="rc-kv"><span>Shadow</span><span class="rv">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
-          <div class="rc-kv"><span>Risk</span><span class="rv"><span class="${riskClass} risk-badge">${rd.risk_level}</span></span></div>
+        <div class="route-card constrained-card" style="margin-top:4px;">
+          <div class="rc-name">
+            <span class="rc-dot" style="background:#ffffff;"></span>
+            CONSTRAINED ROUTE
+          </div>
+          <div class="rc-kv"><span>Distance</span><span class="rv">${rd.path_length_cells ?? '--'} cells</span></div>
+          <div class="rc-kv"><span>Shadow</span><span class="rv rc-shadow-bar">
+            <span class="rc-shadow-track"><span class="rc-shadow-fill" style="width:${barWidth}%;background:${barColor};"></span></span>
+            ${shadowPct.toFixed(1)}%
+          </span></div>
+          <div class="rc-kv"><span>Hazards</span><span class="rv">${rd.hazards_near_path ?? 0} nearby</span></div>
+          <div class="rc-kv"><span>Risk</span><span class="rv" style="color:${riskColor};font-weight:700;">${riskLevel}</span></div>
+          <div class="rc-actions">
+            <button onclick="selectRoute('constrained')">SELECT</button>
+            <button class="${_hmShowOnlyRoute==='constrained'?'active-show':''}" onclick="toggleShowOnly('constrained')">SHOW ONLY</button>
+          </div>
         </div>`;
     } else {
-      resultEl.innerHTML = `<div style="border:1px solid var(--red);padding:6px;font-family:var(--mono);font-size:10px;color:var(--red);">No route meets these constraints</div>`;
+      resultEl.innerHTML = `
+        <div class="route-card constrained-card no-path" style="margin-top:4px;">
+          <div class="rc-name">
+            <span class="rc-dot" style="background:#ff4444;"></span>
+            CONSTRAINED ROUTE
+          </div>
+          <div style="color:#ff4444;font-family:var(--mono);font-size:11px;padding:8px 0;">
+            NO FEASIBLE PATH &mdash; relax constraints
+          </div>
+        </div>`;
     }
-    flashBtn(btn, rd.status === 'found');
   } catch(e) {
-    flashBtn(btn, false);
+    const resultEl = el('constrained-result');
+    resultEl.innerHTML = `<div class="route-card constrained-card no-path" style="margin-top:4px;">
+      <div style="color:#ff4444;font-family:var(--mono);font-size:11px;padding:8px 0;">Request failed</div>
+    </div>`;
   }
   btn.disabled = false;
   btn.textContent = 'RECALCULATE';
 }
 
-// ─── Cost heatmap ─────────────────────────────────────────────────────────────
-let _heatmapData = null;
+// ─── Route endpoints state ────────────────────────────────────────────────────
+let _routeStart = [0, 0];
+let _routeEnd   = [7, 7];
+let _heatmapClickState = 0; // 0=set start, 1=set end, 2=reset
+
+function getRouteStart() { return [parseInt(el('ep-start-r').value)||0, parseInt(el('ep-start-c').value)||0]; }
+function getRouteEnd()   { return [parseInt(el('ep-end-r').value)||7, parseInt(el('ep-end-c').value)||7]; }
+function setRouteStart(r,c) { _routeStart=[r,c]; el('ep-start-r').value=r; el('ep-start-c').value=c; }
+function setRouteEnd(r,c)   { _routeEnd=[r,c]; el('ep-end-r').value=r; el('ep-end-c').value=c; }
+
+async function planRoutes(btn) {
+  const start = getRouteStart(), end = getRouteEnd();
+  const fb = el('plan-routes-feedback');
+  if (btn) { btn.disabled = true; btn.textContent = 'PLANNING...'; }
+  fb.textContent = ''; fb.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/api/plan_routes', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({start, end}),
+    });
+    const d = await r.json();
+    if (d.error) {
+      fb.textContent = d.error; fb.style.color = 'var(--red)';
+      if (btn) flashBtn(btn, false);
+    } else {
+      _lastRouteData = d; _routeStart = start; _routeEnd = end;
+      renderRouteCards(d); renderPathStatsCard(d);
+      fb.textContent = 'ROUTES UPDATED'; fb.style.color = 'var(--green)';
+      if (btn) flashBtn(btn, true);
+      _hmRouteData = d; _hmRouteAnimStart = performance.now();
+      _hmNeedsRedraw = true;
+    }
+  } catch(e) { fb.textContent='ERROR'; fb.style.color='var(--red)'; if(btn)flashBtn(btn,false); }
+  if (btn) { btn.disabled = false; btn.textContent = 'PLAN ROUTES'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERACTIVE COST HEATMAP — Canvas renderer with routes, animation, tooltips
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const HM_ROWS = 8, HM_COLS = 8;
+const HM_MARGIN_LEFT = 24;   // space for row labels
+const HM_MARGIN_TOP  = 20;   // space for col labels
+const HM_SIZE = 540;         // grid drawing area (square)
+const HM_CELL = HM_SIZE / HM_COLS; // 67.5px per cell
+const HM_W = HM_MARGIN_LEFT + HM_SIZE;
+const HM_H = HM_MARGIN_TOP  + HM_SIZE;
+const COL_LABELS = 'ABCDEFGH';
+
+let _heatmapData     = null;  // from /api/cost_grid
+let _hmRouteData     = null;  // from /api/routes
+let _hmHoverCell     = null;  // {row, col} or null
+let _hmNeedsRedraw   = true;
+let _hmAnimFrame     = null;
+let _hmRouteAnimStart = 0;    // timestamp when route animation started
+const _hmRouteAnimDur = 1000; // ms for path draw animation
+
+// Cell fill colours at 60% opacity over dark bg
+function hmCellFill(cost, cls, surveyed) {
+  if (!surveyed) return null;             // unsurveyed handled separately
+  if (cls === 'IMPASSABLE' || cost >= 999) return null; // crosshatch
+  if (cost <= 1)  return 'rgba(0,255,136,0.60)';   // safe
+  if (cost <= 5)  return 'rgba(255,170,0,0.60)';   // moderate
+  if (cost <= 15) return 'rgba(68,136,255,0.60)';  // shadow
+  if (cost <= 20) return 'rgba(255,68,68,0.60)';   // hazard
+  return 'rgba(30,34,51,1)';
+}
+
+function hmCellName(cost, cls) {
+  if (cls === 'IMPASSABLE' || cost >= 999) return 'IMPASSABLE';
+  if (cost <= 1)  return 'SAFE';
+  if (cost <= 5)  return 'MODERATE';
+  if (cost <= 15) return 'SHADOW';
+  if (cost <= 20) return 'HAZARD';
+  return 'UNKNOWN';
+}
+
+// ─── Main draw function ──────────────────────────────────────────────────────
+function hmDraw(now) {
+  const canvas = el('cost-heatmap-canvas');
+  if (!canvas) return;
+  canvas.width = HM_W; canvas.height = HM_H;
+  const ctx = canvas.getContext('2d');
+
+  // Clear
+  ctx.fillStyle = '#0a0e17';
+  ctx.fillRect(0, 0, HM_W, HM_H);
+
+  const ox = HM_MARGIN_LEFT, oy = HM_MARGIN_TOP;
+
+  // Column labels A–H
+  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let c = 0; c < HM_COLS; c++) {
+    ctx.fillText(COL_LABELS[c], ox + c * HM_CELL + HM_CELL/2, oy/2);
+  }
+  // Row labels 1–8
+  ctx.textAlign = 'right';
+  for (let r = 0; r < HM_ROWS; r++) {
+    ctx.fillText(String(r+1), ox - 6, oy + r * HM_CELL + HM_CELL/2);
+  }
+
+  // Build cell lookup from cost_grid JSON
+  const cg = _heatmapData;
+  const grid        = cg ? cg.grid : null;
+  const cls         = cg ? cg.classifications : null;
+  const coverage    = cg ? cg.coverage : null;
+  const passData    = cg ? cg.pass_data : null;
+  const changeCells = cg ? (cg.change_cells || []) : [];
+  const changeCellSet = new Set(changeCells.map(c => c[0]+','+c[1]));
+
+  // ── Draw cells ──
+  for (let r = 0; r < HM_ROWS; r++) {
+    for (let c = 0; c < HM_COLS; c++) {
+      const x = ox + c * HM_CELL, y = oy + r * HM_CELL;
+      const cost = grid ? grid[r][c] : 1;
+      const klass = cls ? cls[r][c] : 'SAFE';
+      const surv = coverage ? coverage[r][c] : false;
+
+      if (!surv) {
+        // Unsurveyed cell
+        ctx.fillStyle = '#1e2233';
+        ctx.fillRect(x, y, HM_CELL, HM_CELL);
+        ctx.fillStyle = '#3a3f4b';
+        ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('?', x + HM_CELL/2, y + HM_CELL/2);
+      } else if (klass === 'IMPASSABLE' || cost >= 999) {
+        // Impassable: dark fill + red crosshatch
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(x, y, HM_CELL, HM_CELL);
+        ctx.strokeStyle = 'rgba(255,68,68,0.4)'; ctx.lineWidth = 1;
+        for (let i = -HM_CELL; i < HM_CELL * 2; i += 8) {
+          ctx.beginPath(); ctx.moveTo(x + i, y); ctx.lineTo(x + i + HM_CELL, y + HM_CELL); ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = hmCellFill(cost, klass, surv);
+        ctx.fillRect(x, y, HM_CELL, HM_CELL);
+      }
+
+      // Change cell animated glow
+      if (changeCellSet.has(r+','+c)) {
+        const pulse = (Math.sin(now / 1000 * Math.PI) + 1) / 2; // 0..1 over 2s
+        ctx.save();
+        ctx.strokeStyle = `rgba(255,149,0,${0.3 + pulse * 0.5})`;
+        ctx.lineWidth = 2 + pulse;
+        ctx.strokeRect(x + 2, y + 2, HM_CELL - 4, HM_CELL - 4);
+        ctx.restore();
+      }
+
+      // Hover highlight
+      if (_hmHoverCell && _hmHoverCell.row === r && _hmHoverCell.col === c) {
+        ctx.fillStyle = 'rgba(0,212,255,0.12)';
+        ctx.fillRect(x, y, HM_CELL, HM_CELL);
+        ctx.strokeStyle = 'rgba(0,212,255,0.5)'; ctx.lineWidth = 2;
+        ctx.strokeRect(x+1, y+1, HM_CELL-2, HM_CELL-2);
+      }
+    }
+  }
+
+  // ── Grid lines ──
+  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1;
+  for (let i = 0; i <= HM_ROWS; i++) {
+    ctx.beginPath(); ctx.moveTo(ox, oy + i*HM_CELL); ctx.lineTo(ox + HM_SIZE, oy + i*HM_CELL); ctx.stroke();
+  }
+  for (let j = 0; j <= HM_COLS; j++) {
+    ctx.beginPath(); ctx.moveTo(ox + j*HM_CELL, oy); ctx.lineTo(ox + j*HM_CELL, oy + HM_SIZE); ctx.stroke();
+  }
+
+  // ── Route overlay ──
+  if (_hmRouteData) {
+    const routes = _hmRouteData;
+    const selected = routes.selected || 'safest';
+    const elapsed = now - _hmRouteAnimStart;
+    const animPct = Math.min(1, elapsed / _hmRouteAnimDur);
+
+    const routeDefs = [
+      {key:'fastest', color:'#00ff88', dash:[8,6]},
+      {key:'safest',  color:'#4488ff', dash:[]},
+      {key:'balanced',color:'#ffaa00', dash:[3,4]},
+    ];
+
+    for (const rd of routeDefs) {
+      const rdata = routes[rd.key];
+      if (!rdata || !rdata.path || rdata.path.length < 2) continue;
+      const path = rdata.path;
+      const isSel = rd.key === selected;
+      let alpha;
+      if (_hmShowOnlyRoute) {
+        alpha = rd.key === _hmShowOnlyRoute ? 1.0 : 0.15;
+      } else {
+        alpha = isSel ? 1.0 : 0.4;
+      }
+      const drawLen = Math.floor(path.length * animPct);
+      if (drawLen < 2) continue;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = rd.color;
+      ctx.lineWidth = 3;
+      ctx.setLineDash(rd.dash);
+      ctx.beginPath();
+      for (let i = 0; i < drawLen; i++) {
+        const pr = path[i][0], pc = path[i][1];
+        const px = ox + pc * HM_CELL + HM_CELL/2;
+        const py = oy + pr * HM_CELL + HM_CELL/2;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Arrow triangles every 2 cells
+      for (let i = 2; i < drawLen; i += 2) {
+        const pr0 = path[i-1][0], pc0 = path[i-1][1];
+        const pr1 = path[i][0], pc1 = path[i][1];
+        const x0 = ox + pc0*HM_CELL + HM_CELL/2, y0 = oy + pr0*HM_CELL + HM_CELL/2;
+        const x1 = ox + pc1*HM_CELL + HM_CELL/2, y1 = oy + pr1*HM_CELL + HM_CELL/2;
+        const ang = Math.atan2(y1-y0, x1-x0);
+        const mx = (x0+x1)/2, my = (y0+y1)/2;
+        ctx.fillStyle = rd.color;
+        ctx.beginPath();
+        ctx.moveTo(mx + Math.cos(ang)*5, my + Math.sin(ang)*5);
+        ctx.lineTo(mx + Math.cos(ang + 2.5)*5, my + Math.sin(ang + 2.5)*5);
+        ctx.lineTo(mx + Math.cos(ang - 2.5)*5, my + Math.sin(ang - 2.5)*5);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ── Landing (L) and Target (T) pulsing markers ──
+  const start = getRouteStart(), end = getRouteEnd();
+  const pulseR = 8 + 4 * ((Math.sin(now / 400) + 1) / 2); // 8–12px
+  _hmDrawEndpoint(ctx, start[0], start[1], ox, oy, 'L', '#00c875', pulseR, now);
+  _hmDrawEndpoint(ctx, end[0], end[1], ox, oy, 'T', '#ff3b3b', pulseR, now);
+
+  // Continue animation
+  _hmAnimFrame = requestAnimationFrame(hmDraw);
+}
+
+function _hmDrawEndpoint(ctx, row, col, ox, oy, label, color, radius, now) {
+  const cx = ox + col * HM_CELL + HM_CELL/2;
+  const cy = oy + row * HM_CELL + HM_CELL/2;
+
+  // Outer glow
+  ctx.save();
+  const glowR = radius + 4;
+  const grad = ctx.createRadialGradient(cx, cy, radius * 0.5, cx, cy, glowR);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI*2); ctx.fill();
+
+  // Solid circle
+  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2);
+  ctx.fillStyle = color; ctx.fill();
+  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Letter
+  ctx.fillStyle = '#000';
+  ctx.font = `bold ${Math.max(10, radius)}px monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, cx, cy + 1);
+  ctx.restore();
+}
+
+// ─── Heatmap data polling ────────────────────────────────────────────────────
+let _hmCostGridData = null;
 
 async function pollCostHeatmap() {
   try {
-    const r = await fetch('/api/cost_heatmap');
+    const r = await fetch('/api/cost_grid');
     if (!r.ok) return;
     const d = await r.json();
     _heatmapData = d;
-    drawCostHeatmap(d);
+    _hmNeedsRedraw = true;
     renderQuadrantSummary(d);
+  } catch(e) {}
+
+  // Also poll routes
+  try {
+    const r2 = await fetch('/api/routes');
+    if (!r2.ok) return;
+    const rd = await r2.json();
+    const hadRoutes = _hmRouteData != null;
+    _hmRouteData = rd;
+    _lastRouteData = rd;
+    if (!hadRoutes && rd) _hmRouteAnimStart = performance.now();
   } catch(e) {}
 }
 
-function drawCostHeatmap(data) {
-  const canvas = el('cost-heatmap-canvas');
-  const rows = data.rows || 8;
-  const cols = data.cols || 8;
-  const parentW = canvas.parentElement ? canvas.parentElement.offsetWidth : 200;
-  const cell = Math.floor(Math.min(parentW / cols, 32));
-  canvas.width  = cell * cols;
-  canvas.height = cell * rows;
+// ─── Heatmap mouse events ────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('cost-heatmap-canvas');
+  const tooltip = document.getElementById('heatmap-tooltip');
 
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (const cd of (data.cells || [])) {
-    const x = cd.col * cell;
-    const y = cd.row * cell;
-    ctx.fillStyle = costToHeatmapColour(cd.cost, cd.hazard_class);
-    ctx.fillRect(x, y, cell - 1, cell - 1);
-
-    // Label
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = `${Math.max(6, cell * 0.28)}px monospace`;
-    ctx.fillText(`${cd.row},${cd.col}`, x + 1, y + cell - 2);
+  function cellFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * sx - HM_MARGIN_LEFT;
+    const my = (e.clientY - rect.top) * sy - HM_MARGIN_TOP;
+    const col = Math.floor(mx / HM_CELL), row = Math.floor(my / HM_CELL);
+    if (row < 0 || row >= HM_ROWS || col < 0 || col >= HM_COLS) return null;
+    return {row, col};
   }
 
-  // Grid lines
-  ctx.strokeStyle = '#1a2030';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= rows; i++) {
-    ctx.beginPath(); ctx.moveTo(0, i*cell); ctx.lineTo(cols*cell, i*cell); ctx.stroke();
-  }
-  for (let j = 0; j <= cols; j++) {
-    ctx.beginPath(); ctx.moveTo(j*cell, 0); ctx.lineTo(j*cell, rows*cell); ctx.stroke();
-  }
-}
+  canvas.addEventListener('mousemove', function(e) {
+    const c = cellFromEvent(e);
+    _hmHoverCell = c;
+    if (!c || !_heatmapData) { tooltip.style.display = 'none'; return; }
+    const cg = _heatmapData;
+    const cost = cg.grid ? cg.grid[c.row][c.col] : '?';
+    const klass = cg.classifications ? cg.classifications[c.row][c.col] : '?';
+    const surv = cg.coverage ? cg.coverage[c.row][c.col] : false;
+    const pass = cg.pass_data ? cg.pass_data[c.row][c.col] : 0;
+    const colLabel = COL_LABELS[c.col];
+    const rowLabel = c.row + 1;
+    tooltip.innerHTML = surv
+      ? `Cell <b>${colLabel}${rowLabel}</b> | Cost: ${cost} (${klass}) | Pass: ${pass}`
+      : `Cell <b>${colLabel}${rowLabel}</b> | <span style="color:#6b7280">UNSURVEYED</span>`;
+    tooltip.style.display = 'block';
+    // Position near cursor
+    const rect = canvas.getBoundingClientRect();
+    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+    tooltip.style.top  = (e.clientY - rect.top - 24) + 'px';
+  });
 
+  canvas.addEventListener('mouseleave', function() {
+    _hmHoverCell = null;
+    tooltip.style.display = 'none';
+  });
+
+  canvas.addEventListener('click', function(e) {
+    const c = cellFromEvent(e);
+    if (!c) return;
+    const fb = el('plan-routes-feedback');
+
+    if (_heatmapClickState === 0) {
+      setRouteStart(c.row, c.col);
+      _heatmapClickState = 1;
+      fb.textContent = `Landing(L) set to ${COL_LABELS[c.col]}${c.row+1} — click Target`;
+      fb.style.color = 'var(--green)';
+    } else if (_heatmapClickState === 1) {
+      setRouteEnd(c.row, c.col);
+      _heatmapClickState = 2;
+      fb.textContent = `Target(T) set to ${COL_LABELS[c.col]}${c.row+1} — click to reset`;
+      fb.style.color = 'var(--red)';
+      planRoutes(null); // auto-plan
+    } else {
+      _heatmapClickState = 0;
+      fb.textContent = 'Reset — click to set Landing(L)';
+      fb.style.color = 'var(--text-dim)';
+    }
+  });
+})();
+
+// Start animation loop
+requestAnimationFrame(hmDraw);
+
+// ─── Quadrant summary ────────────────────────────────────────────────────────
 function renderQuadrantSummary(data) {
-  const cells = data.cells || [];
+  const grid = data.grid || [];
+  const cls  = data.classifications || [];
   const quads = [
-    { name: 'NW', rMin: 0, rMax: 3, cMin: 0, cMax: 3 },
-    { name: 'NE', rMin: 0, rMax: 3, cMin: 4, cMax: 7 },
-    { name: 'SW', rMin: 4, rMax: 7, cMin: 0, cMax: 3 },
-    { name: 'SE', rMin: 4, rMax: 7, cMin: 4, cMax: 7 },
+    { name: 'NW', rMin:0,rMax:3, cMin:0,cMax:3 },
+    { name: 'NE', rMin:0,rMax:3, cMin:4,cMax:7 },
+    { name: 'SW', rMin:4,rMax:7, cMin:0,cMax:3 },
+    { name: 'SE', rMin:4,rMax:7, cMin:4,cMax:7 },
   ];
   const tbody = el('quad-table-body');
   tbody.innerHTML = '';
   for (const q of quads) {
-    const qCells = cells.filter(c => c.row >= q.rMin && c.row <= q.rMax && c.col >= q.cMin && c.col <= q.cMax);
-    const hazardCount = qCells.filter(c => c.hazard_class === 'HAZARD').length;
-    const shadowCount = qCells.filter(c => c.hazard_class === 'SHADOW').length;
-    const shadowPct = qCells.length ? (shadowCount / qCells.length * 100).toFixed(0) : '--';
+    let hazardCount = 0, shadowCount = 0, total = 0;
+    for (let r = q.rMin; r <= q.rMax; r++) {
+      for (let c = q.cMin; c <= q.cMax; c++) {
+        total++;
+        if (cls[r] && cls[r][c] === 'HAZARD') hazardCount++;
+        if (cls[r] && cls[r][c] === 'SHADOW') shadowCount++;
+      }
+    }
+    const shadowPct = total ? (shadowCount / total * 100).toFixed(0) : '--';
     let risk = 'LOW';
     if (hazardCount > 2 || shadowCount > 4) risk = 'HIGH';
     else if (hazardCount > 0 || shadowCount > 2) risk = 'MODERATE';
@@ -1448,6 +1692,236 @@ function renderQuadrantSummary(data) {
     tbody.appendChild(tr);
   }
 }
+
+// ─── Change Detection Before/After Slider ────────────────────────────────────
+let _changeData = null;
+let _changeSelectedCell = null;  // "r,c" key of selected cell
+let _csSliderPct = 50;
+let _csDragging = false;
+
+async function pollChanges() {
+  try {
+    const r = await fetch('/api/changes');
+    if (!r.ok) return;
+    const d = await r.json();
+    const prev = _changeData;
+    _changeData = d;
+    // Only re-render if data actually changed
+    if (!prev || JSON.stringify(prev) !== JSON.stringify(d)) {
+      renderChangeDetection(d);
+    }
+  } catch(e) {}
+}
+
+// ─── Shadow data ─────────────────────────────────────────────────────────────
+async function pollShadow() {
+  try {
+    const r = await fetch('/api/shadow_data');
+    if (!r.ok) return;
+    const d = await r.json();
+    const txt = el('shadow-summary-text');
+    if (txt) {
+      const pct = d.shadow_pct != null ? fmtNum(d.shadow_pct,1) + '%' : '--';
+      const regions = d.regions ? d.regions.length : '--';
+      const largest = d.regions && d.regions.length ? d.regions.reduce((a,b) => a.area_px > b.area_px ? a : b).area_px + ' px' : '--';
+      txt.textContent = `Shadow: ${pct} | ${regions} regions | Largest: ${largest}`;
+    }
+  } catch(e) {}
+}
+
+function renderChangeDetection(data) {
+  const events = data.events || [];
+  const tabsEl = el('change-cell-tabs');
+  const sliderEl = el('change-slider');
+  const phEl = el('change-slider-ph');
+  const eventsEl = el('change-events-list');
+  const warningEl = el('change-low-conf-warning');
+
+  if (!events.length) {
+    tabsEl.innerHTML = '';
+    sliderEl.style.display = 'none';
+    phEl.style.display = '';
+    eventsEl.innerHTML = '';
+    warningEl.style.display = 'none';
+    return;
+  }
+
+  // Group events by cell
+  const cellMap = {};
+  for (const evt of events) {
+    const key = evt.cell ? `${evt.cell[0]},${evt.cell[1]}` : '0,0';
+    if (!cellMap[key]) cellMap[key] = [];
+    cellMap[key].push(evt);
+  }
+  const cellKeys = Object.keys(cellMap);
+
+  // Auto-select first cell if none selected
+  if (!_changeSelectedCell || !cellMap[_changeSelectedCell]) {
+    _changeSelectedCell = cellKeys[0];
+  }
+
+  // Render cell tabs
+  tabsEl.innerHTML = '';
+  for (const key of cellKeys) {
+    const [r, c] = key.split(',');
+    const btn = document.createElement('button');
+    btn.className = 'change-cell-tab' + (key === _changeSelectedCell ? ' active' : '');
+    btn.textContent = `Cell (${r},${c})`;
+    btn.onclick = () => { _changeSelectedCell = key; renderChangeDetection(data); };
+    tabsEl.appendChild(btn);
+  }
+
+  // Get events for selected cell
+  const cellEvents = cellMap[_changeSelectedCell] || [];
+  const firstEvt = cellEvents[0];
+
+  // Render slider if we have image refs
+  const hasBefore = firstEvt.before_image;
+  const hasAfter = firstEvt.after_image;
+
+  if (hasBefore && hasAfter) {
+    phEl.style.display = 'none';
+    sliderEl.style.display = '';
+    const beforeImg = el('cs-before-img');
+    const afterImg = el('cs-after-img');
+    const newBefore = `/api/image/${firstEvt.before_image}`;
+    const newAfter = `/api/image/${firstEvt.after_image}`;
+    if (beforeImg.src !== location.origin + newBefore) {
+      beforeImg.src = newBefore;
+      afterImg.src = newAfter;
+    }
+    el('cs-label-before').textContent = `BEFORE (Pass ${firstEvt.pass_before})`;
+    el('cs-label-after').textContent = `AFTER (Pass ${firstEvt.pass_after})`;
+    updateSliderPosition(_csSliderPct);
+    renderBboxOverlay(cellEvents);
+  } else {
+    sliderEl.style.display = 'none';
+    phEl.style.display = '';
+    phEl.innerHTML = '<div class="cs-placeholder">Images not available for this cell — change map only</div>';
+  }
+
+  // Render event cards
+  eventsEl.innerHTML = '';
+  for (const evt of cellEvents) {
+    const card = document.createElement('div');
+    card.className = 'change-event-card';
+    const confPct = ((evt.confidence || 0) * 100).toFixed(0);
+    const confColor = evt.confidence >= 0.8 ? '#00ff88' : evt.confidence >= 0.7 ? '#ffaa00' : '#ff4444';
+    card.innerHTML = `
+      <span class="ce-id">&Delta;${evt.id}</span>
+      <span>Cell (${(evt.cell||[0,0]).join(',')})&nbsp;</span>
+      <span class="ce-detail">${evt.area_px} px&sup2; ${evt.type}</span>
+      <span class="ce-conf" style="color:${confColor}">Confidence: ${confPct}%</span>
+    `;
+    // Click to highlight this event's bbox
+    card.onclick = () => {
+      document.querySelectorAll('.change-event-card').forEach(c => c.classList.remove('active-event'));
+      card.classList.add('active-event');
+      highlightBbox(evt);
+    };
+    eventsEl.appendChild(card);
+  }
+
+  // Low confidence warning
+  const lowConf = cellEvents.filter(e => (e.confidence || 1) < 0.7);
+  if (lowConf.length) {
+    warningEl.style.display = 'block';
+    warningEl.innerHTML = '&#9888; Low alignment confidence — results may be unreliable';
+  } else {
+    warningEl.style.display = 'none';
+  }
+}
+
+function updateSliderPosition(pct) {
+  _csSliderPct = pct;
+  const wrap = el('cs-after-wrap');
+  const divider = el('cs-divider');
+  const handle = el('cs-handle');
+  wrap.style.clipPath = `inset(0 0 0 ${pct}%)`;
+  divider.style.left = pct + '%';
+  handle.style.left = pct + '%';
+}
+
+function renderBboxOverlay(events) {
+  const svg = el('cs-bbox-overlay');
+  const beforeImg = el('cs-before-img');
+  if (!beforeImg.naturalWidth) {
+    // Wait for image load
+    beforeImg.onload = () => renderBboxOverlay(events);
+    return;
+  }
+  const natW = beforeImg.naturalWidth;
+  const natH = beforeImg.naturalHeight;
+  svg.setAttribute('viewBox', `0 0 ${natW} ${natH}`);
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.innerHTML = '';
+  for (const evt of events) {
+    if (!evt.bbox) continue;
+    const [bx, by, bw, bh] = evt.bbox;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', bx);
+    rect.setAttribute('y', by);
+    rect.setAttribute('width', bw);
+    rect.setAttribute('height', bh);
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', '#ff4444');
+    rect.setAttribute('stroke-width', '2');
+    rect.setAttribute('rx', '2');
+    svg.appendChild(rect);
+  }
+}
+
+function highlightBbox(evt) {
+  const svg = el('cs-bbox-overlay');
+  // Reset all bboxes to default
+  svg.querySelectorAll('rect').forEach(r => {
+    r.setAttribute('stroke-width', '2');
+    r.setAttribute('stroke', '#ff4444');
+  });
+  if (!evt.bbox) return;
+  // Find and highlight matching bbox
+  const [bx, by, bw, bh] = evt.bbox;
+  svg.querySelectorAll('rect').forEach(r => {
+    if (parseInt(r.getAttribute('x')) === bx && parseInt(r.getAttribute('y')) === by) {
+      r.setAttribute('stroke-width', '3');
+      r.setAttribute('stroke', '#ff8844');
+    }
+  });
+}
+
+// ── Slider drag handling ──
+(function() {
+  const slider = document.getElementById('change-slider');
+  const handle = document.getElementById('cs-handle');
+
+  function getPct(e) {
+    const rect = slider.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+  }
+
+  handle.addEventListener('mousedown', (e) => { _csDragging = true; e.preventDefault(); });
+  handle.addEventListener('touchstart', (e) => { _csDragging = true; e.preventDefault(); }, {passive: false});
+
+  document.addEventListener('mousemove', (e) => {
+    if (!_csDragging) return;
+    updateSliderPosition(getPct(e));
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (!_csDragging) return;
+    updateSliderPosition(getPct(e));
+  }, {passive: true});
+
+  document.addEventListener('mouseup', () => { _csDragging = false; });
+  document.addEventListener('touchend', () => { _csDragging = false; });
+
+  // Also allow clicking anywhere on slider to jump
+  slider.addEventListener('click', (e) => {
+    if (e.target === handle) return;
+    updateSliderPosition(getPct(e));
+  });
+})();
 
 // ─── Change→Route impact warning ─────────────────────────────────────────────
 function checkChangeRouteImpact(statusData, routeData) {
@@ -1482,110 +1956,212 @@ function checkChangeRouteImpact(statusData, routeData) {
   }
 }
 
-// ─── Coverage canvas ─────────────────────────────────────────────────────────
-let _coverageData = null;
-let _coverageAnimating = false;
+// ─── Coverage canvas (animated) ──────────────────────────────────────────────
+let _covPassData = null;       // 8x8 array from cost_grid.json pass_data
+let _covChangeCells = [];      // [[r,c], ...] from cost_grid.json change_cells
+let _covAnimStart = null;      // performance.now() when animation started
+let _covAnimRunning = false;
+let _covAnimFrame = null;
+const COV_ANIM_DUR = 3500;    // 3.5s total (1s per pass + 0.5s for change pulse)
+const COV_ROWS = 8, COV_COLS = 8;
+const COV_MARGIN_LEFT = 20, COV_MARGIN_TOP = 16;
 
 async function pollCoverage() {
+  // Coverage now comes from cost_grid pass_data
   try {
-    const r = await fetch('/api/coverage');
+    const r = await fetch('/api/cost_grid');
     if (!r.ok) return;
     const d = await r.json();
-    _coverageData = d;
-    if (!_coverageAnimating) drawCoverage(d.grid, d.rows, d.cols);
+    _covPassData = d.pass_data || null;
+    _covChangeCells = d.change_cells || [];
+    if (_covFirstLoad && _covPassData) {
+      _covFirstLoad = false;
+      startCoverageAnim();
+    } else if (!_covAnimRunning) {
+      drawCoverageFinal();
+    }
   } catch(e) {}
 }
 
-function drawCoverage(grid, rows, cols) {
+function drawCoverageFinal() {
+  if (!_covPassData) return;
   const canvas = el('coverage-canvas');
-  const cell   = Math.floor(canvas.parentElement.offsetWidth / cols) || 24;
-  canvas.width  = cell * cols;
-  canvas.height = cell * rows;
-
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cw = canvas.width, ch = canvas.height;
+  const gridW = cw - COV_MARGIN_LEFT, gridH = ch - COV_MARGIN_TOP;
+  const cellW = gridW / COV_COLS, cellH = gridH / COV_ROWS;
+  const ox = COV_MARGIN_LEFT, oy = COV_MARGIN_TOP;
 
-  for (const row of grid) {
-    for (const cell_data of row) {
-      const r = cell_data.row, c = cell_data.col;
-      const x = c * cell, y = r * cell;
-      const cls = cell_data.hazard_class;
+  ctx.fillStyle = '#0a0e17';
+  ctx.fillRect(0, 0, cw, ch);
 
-      ctx.fillStyle = HAZARD_COLOURS[cls] ? HAZARD_COLOURS[cls] : '#1a1a1a';
-      ctx.fillRect(x, y, cell - 1, cell - 1);
+  // Labels
+  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let c = 0; c < COV_COLS; c++) ctx.fillText(COL_LABELS[c], ox + c*cellW + cellW/2, oy/2);
+  ctx.textAlign = 'right';
+  for (let r = 0; r < COV_ROWS; r++) ctx.fillText(String(r+1), ox - 4, oy + r*cellH + cellH/2);
 
-      if (cell_data.has_change) {
-        ctx.strokeStyle = '#ff9500';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x + 1, y + 1, cell - 3, cell - 3);
-      }
-
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.font = `${Math.max(7, cell * 0.3)}px monospace`;
-      ctx.fillText(`${r},${c}`, x + 2, y + cell - 3);
-    }
-  }
-
-  ctx.strokeStyle = '#2a3040';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= rows; i++) {
-    ctx.beginPath(); ctx.moveTo(0, i * cell); ctx.lineTo(cols * cell, i * cell); ctx.stroke();
-  }
-  for (let j = 0; j <= cols; j++) {
-    ctx.beginPath(); ctx.moveTo(j * cell, 0); ctx.lineTo(j * cell, rows * cell); ctx.stroke();
-  }
-}
-
-function animateCoverage() {
-  if (!_coverageData || _coverageAnimating) return;
-  const grid = _coverageData.grid;
-  const rows = _coverageData.rows;
-  const cols = _coverageData.cols;
-
-  // Group cells by (simulated) pass — use cost as proxy for surveyed order
-  const passes = [[], [], []];
-  for (const row of grid) {
-    for (const cd of row) {
-      if (cd.cost <= 1 && cd.hazard_class === 'SAFE' && !cd.has_change) {
-        passes[0].push(cd);
-      } else if (cd.hazard_class && cd.hazard_class !== 'SAFE') {
-        passes[1].push(cd);
+  // Cells
+  for (let r = 0; r < COV_ROWS; r++) {
+    for (let c = 0; c < COV_COLS; c++) {
+      const pass = _covPassData[r][c];
+      const x = ox + c*cellW, y = oy + r*cellH;
+      if (pass > 0) {
+        ctx.fillStyle = '#00ff88';
+        ctx.globalAlpha = 1.0;
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
+        ctx.globalAlpha = 1.0;
       } else {
-        passes[2].push(cd);
+        ctx.fillStyle = '#1e2233';
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
       }
     }
   }
 
-  _coverageAnimating = true;
+  // Change cells: orange outline
+  for (const [cr, cc] of _covChangeCells) {
+    const x = ox + cc*cellW, y = oy + cr*cellH;
+    ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2;
+    ctx.strokeRect(x + 2, y + 2, cellW - 5, cellH - 5);
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1; ctx.globalAlpha = 1;
+  for (let i = 0; i <= COV_ROWS; i++) {
+    ctx.beginPath(); ctx.moveTo(ox, oy + i*cellH); ctx.lineTo(ox + gridW, oy + i*cellH); ctx.stroke();
+  }
+  for (let j = 0; j <= COV_COLS; j++) {
+    ctx.beginPath(); ctx.moveTo(ox + j*cellW, oy); ctx.lineTo(ox + j*cellW, oy + gridH); ctx.stroke();
+  }
+
+  // Update badge
+  let filled = 0;
+  for (let r = 0; r < COV_ROWS; r++)
+    for (let c = 0; c < COV_COLS; c++)
+      if (_covPassData[r][c] > 0) filled++;
+  el('coverage-pct-badge').textContent = Math.round(filled / (COV_ROWS*COV_COLS) * 100) + '%';
+
+  // Timeline: all segments active, playhead at end
+  for (let i = 1; i <= 3; i++) {
+    const seg = el('cov-tl-p' + i);
+    if (seg) seg.classList.add('active');
+  }
+  const ph = el('cov-tl-playhead');
+  if (ph) ph.style.left = 'calc(100% - 8px)';
+}
+
+function startCoverageAnim() {
+  if (!_covPassData || _covAnimRunning) return;
+  _covAnimRunning = true;
+  _covAnimStart = performance.now();
+
+  // Reset timeline
+  for (let i = 1; i <= 3; i++) el('cov-tl-p' + i).classList.remove('active');
+  el('cov-tl-playhead').style.left = '0px';
+
+  if (_covAnimFrame) cancelAnimationFrame(_covAnimFrame);
+  _covAnimFrame = requestAnimationFrame(covAnimLoop);
+}
+
+function covAnimLoop(now) {
+  if (!_covAnimStart) { _covAnimRunning = false; return; }
+  const elapsed = now - _covAnimStart;
+  const t = Math.min(1, elapsed / COV_ANIM_DUR);
+
   const canvas = el('coverage-canvas');
   const ctx = canvas.getContext('2d');
-  const cell = Math.floor(canvas.parentElement.offsetWidth / cols) || 24;
-  canvas.width  = cell * cols;
-  canvas.height = cell * rows;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cw = canvas.width, ch = canvas.height;
+  const gridW = cw - COV_MARGIN_LEFT, gridH = ch - COV_MARGIN_TOP;
+  const cellW = gridW / COV_COLS, cellH = gridH / COV_ROWS;
+  const ox = COV_MARGIN_LEFT, oy = COV_MARGIN_TOP;
 
-  const steps = [[], ...passes];
-  let step = 0;
+  ctx.fillStyle = '#0a0e17';
+  ctx.fillRect(0, 0, cw, ch);
 
-  function nextStep() {
-    if (step >= steps.length) {
-      _coverageAnimating = false;
-      drawCoverage(grid, rows, cols);
-      return;
-    }
-    for (const cd of steps[step]) {
-      const x = cd.col * cell, y = cd.row * cell;
-      ctx.fillStyle = HAZARD_COLOURS[cd.hazard_class] || '#1a1a1a';
-      ctx.fillRect(x, y, cell - 1, cell - 1);
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.font = `${Math.max(7, cell * 0.3)}px monospace`;
-      ctx.fillText(`${cd.row},${cd.col}`, x + 2, y + cell - 3);
-    }
-    step++;
-    setTimeout(nextStep, 800);
+  // Labels
+  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let c = 0; c < COV_COLS; c++) ctx.fillText(COL_LABELS[c], ox + c*cellW + cellW/2, oy/2);
+  ctx.textAlign = 'right';
+  for (let r = 0; r < COV_ROWS; r++) ctx.fillText(String(r+1), ox - 4, oy + r*cellH + cellH/2);
+
+  // Which pass are we in? 0-1s=pass1, 1-2s=pass2, 2-3s=pass3, 3-3.5s=change pulse
+  const passTime = COV_ANIM_DUR * (3/3.5);  // 3s for passes
+  const currentPassFrac = Math.min(3, (elapsed / passTime) * 3); // 0..3
+  const currentPass = Math.floor(currentPassFrac) + 1; // 1,2,3
+  const passFade = currentPassFrac - Math.floor(currentPassFrac); // 0..1 within pass
+
+  // Update timeline segments
+  for (let i = 1; i <= 3; i++) {
+    const seg = el('cov-tl-p' + i);
+    if (i < currentPass) seg.classList.add('active');
+    else if (i === currentPass && currentPassFrac < 3) seg.classList.add('active');
+    else seg.classList.remove('active');
   }
-  nextStep();
+
+  // Update playhead
+  const ph = el('cov-tl-playhead');
+  const tlWidth = el('cov-timeline').offsetWidth;
+  ph.style.left = Math.min(tlWidth - 8, t * tlWidth) + 'px';
+
+  // Draw cells
+  for (let r = 0; r < COV_ROWS; r++) {
+    for (let c = 0; c < COV_COLS; c++) {
+      const pass = _covPassData[r][c];
+      const x = ox + c*cellW, y = oy + r*cellH;
+
+      if (pass === 0 || pass > currentPass) {
+        // Unsurveyed
+        ctx.fillStyle = '#1e2233'; ctx.globalAlpha = 1;
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
+      } else if (pass === currentPass && currentPassFrac < 3) {
+        // Currently fading in
+        const alpha = 0.4 + 0.6 * Math.min(1, passFade * 2); // quick fade
+        ctx.fillStyle = '#00ff88'; ctx.globalAlpha = alpha;
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
+        ctx.globalAlpha = 1;
+      } else {
+        // Already revealed
+        const passAlpha = pass === 1 ? 0.4 : pass === 2 ? 0.7 : 1.0;
+        ctx.fillStyle = '#00ff88'; ctx.globalAlpha = passAlpha;
+        ctx.fillRect(x, y, cellW - 1, cellH - 1);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // After all passes shown, pulse change cells
+  if (elapsed > passTime) {
+    const pulse = (Math.sin((elapsed - passTime) / 150) + 1) / 2;
+    for (const [cr, cc] of _covChangeCells) {
+      const x = ox + cc*cellW, y = oy + cr*cellH;
+      ctx.fillStyle = `rgba(255,149,0,${0.3 + 0.4 * pulse})`;
+      ctx.fillRect(x, y, cellW - 1, cellH - 1);
+      ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2;
+      ctx.strokeRect(x + 2, y + 2, cellW - 5, cellH - 5);
+    }
+  }
+
+  // Grid lines (always on top)
+  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1; ctx.globalAlpha = 1;
+  for (let i = 0; i <= COV_ROWS; i++) {
+    ctx.beginPath(); ctx.moveTo(ox, oy + i*cellH); ctx.lineTo(ox + gridW, oy + i*cellH); ctx.stroke();
+  }
+  for (let j = 0; j <= COV_COLS; j++) {
+    ctx.beginPath(); ctx.moveTo(ox + j*cellW, oy); ctx.lineTo(ox + j*cellW, oy + gridH); ctx.stroke();
+  }
+
+  if (t < 1) {
+    _covAnimFrame = requestAnimationFrame(covAnimLoop);
+  } else {
+    _covAnimRunning = false;
+    drawCoverageFinal();
+  }
 }
+
+// Auto-start animation on first data load
+let _covFirstLoad = true;
 
 // ─── Quality log ─────────────────────────────────────────────────────────────
 async function pollQuality() {
@@ -1629,8 +2205,8 @@ async function pollLog() {
       else if (/WARNING/.test(line))   cls = 'line-warn';
       return `<span class="${cls}">${escHtml(line)}\n</span>`;
     }).join('');
-    const scroll = el('log-scroll');
-    scroll.scrollTop = scroll.scrollHeight;
+    const scroll = el('event-log');
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
   } catch(e) {}
 }
 
@@ -1701,7 +2277,7 @@ async function sendLLM() {
 function pollImages() {
   updateImg('img-latest',           'img-latest-ph',           '/api/latest_image');
   updateImg('img-hazard',           'img-hazard-ph',           '/api/hazard_map');
-  updateImg('img-change',           'img-change-ph',           '/api/change_map');
+  // Change detection now uses the before/after slider, not a static image
   updateImg('img-route-comparison', 'img-route-comparison-ph', '/api/route_comparison_image');
   updateImg('img-mosaic',           'img-mosaic-ph',           '/api/mosaic');
 }
@@ -1714,6 +2290,8 @@ pollQuality();
 pollLog();
 pollRoutes();
 pollCostHeatmap();
+pollChanges();
+pollShadow();
 
 setInterval(pollStatus,      POLL_STATUS_MS);
 setInterval(pollImages,      POLL_IMAGES_MS);
@@ -1722,6 +2300,11 @@ setInterval(pollQuality,     POLL_QUALITY_MS);
 setInterval(pollLog,         POLL_LOG_MS);
 setInterval(pollRoutes,      POLL_ROUTES_MS);
 setInterval(pollCostHeatmap, POLL_HEATMAP_MS);
+setInterval(pollChanges,     POLL_CHANGES_MS);
+setInterval(pollShadow,      POLL_HEATMAP_MS);
+
+// Auto-discover CubeSat on page load
+mcDiscover();
 </script>
 </body>
 </html>

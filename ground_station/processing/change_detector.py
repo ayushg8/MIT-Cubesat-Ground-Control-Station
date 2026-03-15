@@ -18,6 +18,7 @@ from __future__ import annotations
 #     - save images side-by-side instead of diff overlay
 #     - log a warning for the dashboard and mission_state.json
 
+import json
 import logging
 import os
 
@@ -120,6 +121,7 @@ class ChangeDetector:
 
             description = _describe(change_type, area_cm2)
 
+            bx, by, bw, bh = cv2.boundingRect(cnt)
             change_events.append({
                 "id": event_id,
                 "grid_cell": list(grid_cell),
@@ -128,6 +130,7 @@ class ChangeDetector:
                 "area_px": area_px,
                 "area_cm2": area_cm2,
                 "centroid": [cx, cy],
+                "bbox": [bx, by, bw, bh],
                 "type": change_type,
                 "mean_difference": round(mean_diff, 1),
                 "alignment_confidence": round(alignment_confidence, 3),
@@ -164,6 +167,10 @@ class ChangeDetector:
             new_bgr, prev_gray, aligned_new, contours, change_events,
             grid_cell, pass_before, pass_after, alignment_uncertain, new_image_path
         )
+
+        # Save JSON data
+        _save_changes_json(change_events, change_summary, grid_cell,
+                           prev_image_path, new_image_path)
 
         return {
             "change_map_path": map_path,
@@ -292,3 +299,67 @@ def _save_change_map(
     cv2.imwrite(out_path, output)
     logger.debug(f"Change map saved: {out_path}")
     return out_path
+
+
+def _save_changes_json(change_events: list, change_summary: dict, grid_cell: tuple,
+                       prev_image_path: str = None, new_image_path: str = None):
+    """Save change detection results as JSON and update cost_grid.json change_cells."""
+    os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+    out_path = os.path.join(config.PROCESSED_DIR, "changes.json")
+
+    # Load existing changes or start fresh
+    existing = {"events": [], "summary": {"total_events": 0, "total_area": 0}}
+    if os.path.exists(out_path):
+        try:
+            with open(out_path) as f:
+                existing = json.load(f)
+        except Exception:
+            pass
+
+    before_file = os.path.basename(prev_image_path) if prev_image_path else None
+    after_file = os.path.basename(new_image_path) if new_image_path else None
+
+    # Add new events with globally incrementing IDs
+    max_id = max((e.get("id", 0) for e in existing.get("events", [])), default=0)
+    for evt in change_events:
+        max_id += 1
+        existing["events"].append({
+            "id": max_id,
+            "cell": list(grid_cell),
+            "pass_before": evt.get("pass_before", 0),
+            "pass_after": evt.get("pass_after", 0),
+            "area_px": evt.get("area_px", 0),
+            "type": evt.get("type", "unknown"),
+            "mean_diff": round(evt.get("mean_difference", 0), 1),
+            "confidence": evt.get("alignment_confidence", 0),
+            "bbox": evt.get("bbox"),
+            "before_image": before_file,
+            "after_image": after_file,
+        })
+
+    # Update summary
+    existing["summary"] = {
+        "total_events": len(existing["events"]),
+        "total_area": sum(e.get("area_px", 0) for e in existing["events"]),
+    }
+
+    try:
+        with open(out_path, "w") as f:
+            json.dump(existing, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save changes.json: {e}")
+
+    # Update change_cells in cost_grid.json
+    cost_grid_path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
+    if os.path.exists(cost_grid_path):
+        try:
+            with open(cost_grid_path) as f:
+                cg = json.load(f)
+            cell_list = cg.get("change_cells", [])
+            if list(grid_cell) not in cell_list:
+                cell_list.append(list(grid_cell))
+                cg["change_cells"] = cell_list
+                with open(cost_grid_path, "w") as f:
+                    json.dump(cg, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to update cost_grid.json change_cells: {e}")

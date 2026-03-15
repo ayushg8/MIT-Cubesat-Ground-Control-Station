@@ -38,8 +38,8 @@ CHANGE_MIN_AREA_PX = 50            # Min contiguous changed pixels to report as 
 # === ROUTE PLANNING ===
 GRID_ROWS = 8
 GRID_COLS = 8
-ROUTE_START = (0, 0)
-ROUTE_END = (7, 7)
+ROUTE_START = (0, 0)               # Defaults — can be overridden from dashboard
+ROUTE_END = (7, 7)                 # Defaults — can be overridden from dashboard
 GRID_CELL_SIZE_CM = 10.0           # Physical size of each grid cell (cm)
 
 # === DASHBOARD ===

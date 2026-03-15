@@ -23,7 +23,7 @@ import threading
 
 import config
 from processing.change_detector import ChangeDetector
-from processing.hazard_classifier import HazardClassifier
+from processing.hazard_classifier import HazardClassifier, save_cost_grid_json
 from processing.mission_state import MissionState
 from processing.mosaic_builder import MosaicBuilder
 from processing.route_planner import RoutePlanner
@@ -215,6 +215,19 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] route_planner FAILED: {e}", exc_info=True)
 
+        # ── 6. Save cost_grid.json ──
+        try:
+            change_cells = []
+            if change_result and change_result["change_summary"]["total_events"] > 0:
+                change_cells = [list(grid_cell)]
+            save_cost_grid_json(
+                self._cost_grid, self._hazard_grid,
+                image_index=self._image_index,
+                change_cells=change_cells,
+            )
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] save_cost_grid_json FAILED: {e}", exc_info=True)
+
         # ── 7. Persist mission state ──
         try:
             self._mission_state.save()
@@ -287,3 +300,8 @@ class Pipeline:
         """Return a copy of the hazard class string grid."""
         with self._lock:
             return [row[:] for row in self._hazard_grid]
+
+    def get_latest_hazard_map_path(self) -> str | None:
+        """Return path to the most recent hazard map image."""
+        with self._lock:
+            return self._latest_hazard_map_path

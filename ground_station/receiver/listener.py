@@ -62,22 +62,30 @@ def _read_header(sock):
 
 
 def _handle_connection(conn, addr):
+    """Handle one CubeSat connection which may carry multiple transfers
+    (e.g. telemetry then one or more images in the same downlink window)."""
     logger.info(f"Connection from {addr}")
     try:
-        header = _read_header(conn)
-        transfer_type = header.get("type")
-        filename = header.get("filename", "unknown")
-        declared_size = header.get("file_size", 0)
-        declared_md5 = header.get("md5", "")
-        metadata = header.get("metadata", {})
+        while True:
+            try:
+                header = _read_header(conn)
+            except ConnectionError:
+                # Client closed cleanly — end of downlink window
+                break
 
-        if transfer_type == "image":
-            _handle_image(conn, filename, declared_size, declared_md5, metadata)
-        elif transfer_type == "telemetry":
-            _handle_telemetry(conn, filename, declared_size, declared_md5)
-        else:
-            logger.warning(f"Unknown transfer type '{transfer_type}' from {addr}")
-            conn.sendall(protocol.NACK)
+            transfer_type = header.get("type")
+            filename = header.get("filename", "unknown")
+            declared_size = header.get("file_size", 0)
+            declared_md5 = header.get("md5", "")
+            metadata = header.get("metadata", {})
+
+            if transfer_type == "image":
+                _handle_image(conn, filename, declared_size, declared_md5, metadata)
+            elif transfer_type == "telemetry":
+                _handle_telemetry(conn, filename, declared_size, declared_md5)
+            else:
+                logger.warning(f"Unknown transfer type '{transfer_type}' from {addr}")
+                conn.sendall(protocol.NACK)
 
     except json.JSONDecodeError as e:
         logger.error(f"Bad header JSON from {addr}: {e}")

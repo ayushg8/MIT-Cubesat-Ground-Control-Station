@@ -13,6 +13,7 @@
 #   4. MODERATE   — high local texture variance
 #   5. SAFE       — default (well-lit, low variance, no triggers)
 
+import json
 import logging
 import os
 
@@ -282,3 +283,47 @@ def _error_result(grid_cell: tuple) -> dict:
         "hazard_map_path": None,
         "details": {"error": "could_not_read_image"},
     }
+
+
+def save_cost_grid_json(cost_grid, hazard_grid, image_index=None, change_cells=None):
+    """Save the full cost grid and classifications as JSON for the dashboard.
+
+    Args:
+        cost_grid:    numpy int array (GRID_ROWS x GRID_COLS)
+        hazard_grid:  list of lists of class strings
+        image_index:  dict from pipeline image_index (optional, for pass_data)
+        change_cells: list of [r,c] cells with changes (optional)
+    """
+    rows, cols = cost_grid.shape
+    grid = cost_grid.tolist()
+    classifications = [[hazard_grid[r][c] for c in range(cols)] for r in range(rows)]
+
+    # coverage: True if the cell has been surveyed (not default SAFE with cost=1 and no index entry)
+    coverage = [[False] * cols for _ in range(rows)]
+    pass_data = [[0] * cols for _ in range(rows)]
+
+    if image_index:
+        for key, entries in image_index.items():
+            parts = key.split(",")
+            if len(parts) == 2:
+                r, c = int(parts[0]), int(parts[1])
+                if 0 <= r < rows and 0 <= c < cols:
+                    coverage[r][c] = True
+                    if entries:
+                        pass_data[r][c] = max(e.get("pass", 0) for e in entries)
+
+    data = {
+        "grid": grid,
+        "classifications": classifications,
+        "coverage": coverage,
+        "pass_data": pass_data,
+        "change_cells": change_cells or [],
+    }
+
+    os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+    out_path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
+    try:
+        with open(out_path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save cost_grid.json: {e}")

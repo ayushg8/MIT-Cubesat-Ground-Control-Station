@@ -134,7 +134,7 @@ def api_latest_image():
     path = _latest_file(config.RECEIVED_DIR, "*.jpg")
     if path is None:
         return ("No image yet", 204)
-    return send_file(path, mimetype="image/jpeg")
+    return send_file(os.path.abspath(path), mimetype="image/jpeg")
 
 
 @app.route("/api/hazard_map")
@@ -142,7 +142,7 @@ def api_hazard_map():
     path = _latest_file(os.path.join(config.PROCESSED_DIR, "hazard_maps"), "*_hazard.png")
     if path is None:
         return ("No hazard map yet", 204)
-    return send_file(path, mimetype="image/png")
+    return send_file(os.path.abspath(path), mimetype="image/png")
 
 
 @app.route("/api/change_map")
@@ -150,14 +150,14 @@ def api_change_map():
     path = _latest_file(os.path.join(config.PROCESSED_DIR, "change_maps"), "*_change_*.png")
     if path is None:
         return ("No change map yet", 204)
-    return send_file(path, mimetype="image/png")
+    return send_file(os.path.abspath(path), mimetype="image/png")
 
 
 @app.route("/api/route_map")
 def api_route_map():
     fixed = os.path.join(config.PROCESSED_DIR, "routes", "route_latest.png")
     if os.path.exists(fixed):
-        return send_file(fixed, mimetype="image/png")
+        return send_file(os.path.abspath(fixed), mimetype="image/png")
     return ("No route map yet", 204)
 
 
@@ -165,16 +165,106 @@ def api_route_map():
 def api_mosaic():
     fixed = os.path.join(config.PROCESSED_DIR, "mosaics", "mosaic_latest.png")
     if os.path.exists(fixed):
-        return send_file(fixed, mimetype="image/png")
+        return send_file(os.path.abspath(fixed), mimetype="image/png")
     return ("No mosaic yet", 204)
 
 
-@app.route("/api/elevation")
-def api_elevation():
-    path = _latest_file(os.path.join(config.PROCESSED_DIR, "elevation_maps"), "*_elevation.png")
-    if path is None:
-        return ("No elevation map yet", 204)
-    return send_file(path, mimetype="image/png")
+@app.route("/api/routes")
+def api_routes():
+    """Return fastest/safest/balanced route dicts from mission state."""
+    state = _mission_state.get_snapshot() if _mission_state else {}
+    routes = state.get("routes", {})
+    return jsonify(routes)
+
+
+@app.route("/api/route_comparison_image")
+def api_route_comparison_image():
+    fixed = os.path.join(config.PROCESSED_DIR, "routes", "route_comparison.png")
+    if os.path.exists(fixed):
+        return send_file(os.path.abspath(fixed), mimetype="image/png")
+    # Fall back to route_latest.png
+    fallback = os.path.join(config.PROCESSED_DIR, "routes", "route_latest.png")
+    if os.path.exists(fallback):
+        return send_file(os.path.abspath(fallback), mimetype="image/png")
+    return ("No route comparison yet", 204)
+
+
+@app.route("/api/cost_heatmap")
+def api_cost_heatmap():
+    """Return 8×8 JSON array: {row, col, cost, hazard_class} per cell."""
+    rows = config.GRID_ROWS
+    cols = config.GRID_COLS
+
+    if _pipeline is not None:
+        hazard_grid = _pipeline.get_hazard_grid()
+        cost_grid   = _pipeline.get_cost_grid()
+    else:
+        hazard_grid = [["SAFE"] * cols for _ in range(rows)]
+        cost_grid   = None
+
+    cells = []
+    for r in range(rows):
+        for c in range(cols):
+            cost = int(cost_grid[r, c]) if cost_grid is not None else config.COST_SAFE
+            cells.append({
+                "row": r,
+                "col": c,
+                "cost": cost,
+                "hazard_class": hazard_grid[r][c],
+            })
+    return jsonify({"cells": cells, "rows": rows, "cols": cols})
+
+
+@app.route("/api/plan_constrained", methods=["POST"])
+def api_plan_constrained():
+    """Body: {max_shadow_pct, min_hazard_clearance} → route JSON."""
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    max_shadow_pct = float(body.get("max_shadow_pct", 50.0))
+    min_hazard_clearance = int(body.get("min_hazard_clearance", 1))
+
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+
+    cost_grid   = _pipeline.get_cost_grid()
+    hazard_grid = _pipeline.get_hazard_grid()
+
+    try:
+        result = _pipeline._route_planner.plan_with_constraints(
+            cost_grid, hazard_grid,
+            config.ROUTE_START, config.ROUTE_END,
+            max_shadow_pct, min_hazard_clearance,
+        )
+        if _mission_state:
+            with _mission_state._lock:
+                _mission_state._state["routes"]["constrained"] = result
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"plan_constrained failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/select_route", methods=["POST"])
+def api_select_route():
+    """Body: {route_name} → sets routes.selected in mission_state."""
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    route_name = body.get("route_name", "")
+    if route_name not in ("fastest", "safest", "balanced"):
+        return jsonify({"error": "route_name must be fastest, safest, or balanced"}), 400
+
+    if _mission_state:
+        with _mission_state._lock:
+            _mission_state._state["routes"]["selected"] = route_name
+        _mission_state.save()
+
+    return jsonify({"selected": route_name})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,11 +354,11 @@ def api_llm_query():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _latest_file(directory: str, pattern: str) -> str | None:
-    """Return the most recently modified file matching pattern in directory."""
+    """Return the absolute path of the most recently modified file matching pattern."""
     matches = glob.glob(os.path.join(directory, pattern))
     if not matches:
         return None
-    return max(matches, key=os.path.getmtime)
+    return os.path.abspath(max(matches, key=os.path.getmtime))
 
 
 def _read_log_tail(n: int) -> list[str]:

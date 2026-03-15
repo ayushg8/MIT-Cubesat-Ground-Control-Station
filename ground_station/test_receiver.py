@@ -66,7 +66,6 @@ def _setup_dirs():
         os.path.join(config.PROCESSED_DIR, "shadow_masks"),
         os.path.join(config.PROCESSED_DIR, "hazard_maps"),
         os.path.join(config.PROCESSED_DIR, "change_maps"),
-        os.path.join(config.PROCESSED_DIR, "elevation_maps"),
         os.path.join(config.PROCESSED_DIR, "mosaics"),
         os.path.join(config.PROCESSED_DIR, "routes"),
     ]:

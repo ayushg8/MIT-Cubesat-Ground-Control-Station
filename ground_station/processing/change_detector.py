@@ -116,9 +116,7 @@ class ChangeDetector:
             new_mean  = float(aligned_new[contour_mask > 0].mean())
             change_type = "darkened" if new_mean < prev_mean else "brightened"
 
-            area_cm2 = None
-            if config.GSD_CM_PER_PIXEL > 0.0:
-                area_cm2 = round(area_px * (config.GSD_CM_PER_PIXEL ** 2), 3)
+            area_cm2 = None  # GSD not available — area reported in pixels only
 
             description = _describe(change_type, area_cm2)
 

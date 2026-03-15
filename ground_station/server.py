@@ -8,7 +8,7 @@
 #   2. Data directories
 #   3. MissionState, Pipeline, Commander
 #   4. TCP listener thread (port 5000) — waits for CubeSat to push data
-#   5. Flask dashboard (port 8080) — serves the mission ops UI
+#   5. Flask dashboard (port 3000) — serves the mission ops UI
 
 import logging
 import os
@@ -34,7 +34,6 @@ _REQUIRED_DIRS = [
     os.path.join(config.PROCESSED_DIR, "shadow_masks"),
     os.path.join(config.PROCESSED_DIR, "hazard_maps"),
     os.path.join(config.PROCESSED_DIR, "change_maps"),
-    os.path.join(config.PROCESSED_DIR, "elevation_maps"),
     os.path.join(config.PROCESSED_DIR, "mosaics"),
     os.path.join(config.PROCESSED_DIR, "routes"),
     "data/logs",

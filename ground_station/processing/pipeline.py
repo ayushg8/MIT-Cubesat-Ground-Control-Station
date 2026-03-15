@@ -9,10 +9,9 @@ from __future__ import annotations
 #   1. ShadowDetector
 #   2. HazardClassifier
 #   3. ChangeDetector  (only if same cell was imaged in a prior pass)
-#   4. ElevationMapper (only if shadow regions exist)
-#   5. MosaicBuilder   (only if 3+ cells now covered)
-#   6. RoutePlanner
-#   7. MissionState.save()
+#   4. MosaicBuilder   (only if 3+ cells now covered)
+#   5. RoutePlanner
+#   6. MissionState.save()
 #
 # The image index (which cell was imaged in which pass, with which image path)
 # is persisted to data/processed/image_index.json so it survives restarts.
@@ -24,7 +23,6 @@ import threading
 
 import config
 from processing.change_detector import ChangeDetector
-from processing.elevation_map import ElevationMapper
 from processing.hazard_classifier import HazardClassifier
 from processing.mission_state import MissionState
 from processing.mosaic_builder import MosaicBuilder
@@ -51,7 +49,6 @@ class Pipeline:
         self._shadow_detector    = ShadowDetector()
         self._hazard_classifier  = HazardClassifier()
         self._change_detector    = ChangeDetector()
-        self._elevation_mapper   = ElevationMapper()
         self._mosaic_builder     = MosaicBuilder()
         self._route_planner      = RoutePlanner()
 
@@ -110,7 +107,6 @@ class Pipeline:
         shadow_result    = None
         hazard_result    = None
         change_result    = None
-        elevation_result = None
 
         # ── 1. Shadow detection ──
         try:
@@ -178,26 +174,7 @@ class Pipeline:
         else:
             logger.debug(f"Pipeline [{basename}] change: no prior image for cell {grid_cell} — skipped")
 
-        # ── 4. Elevation map ──
-        if shadow_result and shadow_result["shadow_regions"]:
-            try:
-                elevation_result = self._elevation_mapper.compute(
-                    shadow_result["shadow_mask"],
-                    shadow_result["shadow_regions"],
-                    image_path,
-                )
-                if elevation_result:
-                    self._mission_state.record_elevation_result(elevation_result)
-                    logger.info(
-                        f"Pipeline [{basename}] elevation: "
-                        f"max={elevation_result['max_height_cm']:.2f} cm"
-                    )
-            except Exception as e:
-                logger.error(f"Pipeline [{basename}] elevation_mapper FAILED: {e}", exc_info=True)
-        else:
-            logger.debug(f"Pipeline [{basename}] elevation: no shadow regions — skipped")
-
-        # ── 5. Mosaic ──
+        # ── 4. Mosaic ──  (was 5 — elevation removed)
         try:
             mosaic_result = self._mosaic_builder.update(
                 image_path, grid_cell, quality_score, has_change=has_change
@@ -211,21 +188,29 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] mosaic_builder FAILED: {e}", exc_info=True)
 
-        # ── 6. Route planning ──
+        # ── 5. Route planning ──
         try:
-            route_result = self._route_planner.plan(
+            routes = self._route_planner.plan_multiple_routes(
                 self._cost_grid,
                 self._hazard_grid,
                 config.ROUTE_START,
                 config.ROUTE_END,
                 hazard_map_path=self._latest_hazard_map_path,
             )
-            self._mission_state.record_route_result(route_result)
+            self._mission_state.record_route_comparison(routes)
+            fastest = routes.get("fastest", {})
+            self._mission_state.record_route_result({
+                "path":               fastest.get("path", []),
+                "path_length":        fastest.get("path_length_cells", 0),
+                "total_cost":         fastest.get("total_cost", 0.0),
+                "shadow_exposure_pct": fastest.get("max_shadow_exposure_pct", 0.0),
+                "status":             fastest.get("status", "unknown"),
+            })
             logger.info(
-                f"Pipeline [{basename}] route: "
-                f"status={route_result['status']} "
-                f"length={route_result['path_length']} "
-                f"cost={route_result['total_cost']}"
+                f"Pipeline [{basename}] routes: "
+                f"fastest={fastest.get('status')} "
+                f"length={fastest.get('path_length_cells')} "
+                f"cost={fastest.get('total_cost')}"
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] route_planner FAILED: {e}", exc_info=True)

@@ -3,13 +3,8 @@
 # Method: grayscale → Otsu threshold → binary mask → connected components.
 # Shadow regions in the real image appear as dark areas. Otsu finds the optimal
 # threshold separating lit surface from shadow without manual tuning.
-#
-# Height estimation uses the physical setup config values (measured before demo).
-# If FLASHLIGHT_ELEVATION_DEG or GSD_CM_PER_PIXEL is still 0.0, height
-# estimation is skipped and a warning is logged — detection still runs.
 
 import logging
-import math
 import os
 
 import cv2
@@ -65,17 +60,6 @@ class ShadowDetector:
         )
 
         shadow_regions = []
-        can_estimate_height = (
-            config.FLASHLIGHT_ELEVATION_DEG > 0.0
-            and config.GSD_CM_PER_PIXEL > 0.0
-        )
-        if not can_estimate_height:
-            logger.warning(
-                "ShadowDetector: FLASHLIGHT_ELEVATION_DEG or GSD_CM_PER_PIXEL is 0.0 "
-                "in config — height estimation skipped. Fill in measured values before demo."
-            )
-
-        elevation_rad = math.radians(config.FLASHLIGHT_ELEVATION_DEG)
 
         for label_idx in range(1, num_labels):  # skip label 0 = background
             area = int(stats[label_idx, cv2.CC_STAT_AREA])
@@ -89,26 +73,15 @@ class ShadowDetector:
             cx = float(centroids[label_idx, 0])
             cy = float(centroids[label_idx, 1])
 
-            # Shadow length: use the longer axis of the bounding box as a proxy.
-            # The flashlight casts a shadow extending away from it; the bounding
-            # box height (in image rows, roughly perpendicular to azimuth) is the
-            # shadow length. This is a first-order approximation — accurate when
-            # the flashlight azimuth aligns with the image column axis.
             shadow_length_px = max(w, h_bbox)
-
-            if can_estimate_height:
-                height_px = shadow_length_px * math.tan(elevation_rad)
-                height_cm = height_px * config.GSD_CM_PER_PIXEL
-            else:
-                height_cm = None
 
             shadow_regions.append({
                 "label": label_idx,
                 "area_px": area,
-                "bbox": {"x": x, "y": y, "w": w, "h": h_bbox},
+                "width_px": w,
+                "height_px": h_bbox,
                 "centroid": {"x": round(cx, 1), "y": round(cy, 1)},
                 "shadow_length_px": shadow_length_px,
-                "estimated_height_cm": round(height_cm, 3) if height_cm is not None else None,
             })
 
         logger.info(

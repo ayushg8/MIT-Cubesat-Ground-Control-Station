@@ -292,6 +292,125 @@ input.cmd-input:focus { border-color: var(--cyan); }
 
 .note { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); }
 .note.warn { color: var(--amber); }
+
+/* ── Route planning section ──────────────────────────────────────────────── */
+.route-cards {
+  display: flex; gap: 8px; margin-top: 8px;
+}
+.route-card {
+  flex: 1;
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  padding: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.route-card.selected-card { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan-dim); }
+.route-card .rc-name {
+  font-size: 11px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.route-card .rc-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.route-card .rc-kv {
+  display: flex; justify-content: space-between;
+  padding: 1px 0;
+  color: var(--text-dim);
+}
+.route-card .rc-kv .rv { color: var(--text-bright); }
+.risk-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+.risk-LOW      { background: #003322; color: var(--green); border: 1px solid var(--green); }
+.risk-MODERATE { background: #332200; color: var(--amber); border: 1px solid var(--amber); }
+.risk-HIGH     { background: #330000; color: var(--red);   border: 1px solid var(--red); }
+
+/* ── Constraint panel ────────────────────────────────────────────────────── */
+.constraint-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.constraint-row label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 160px;
+}
+.constraint-row input[type=range] {
+  flex: 1;
+  accent-color: var(--cyan);
+}
+.constraint-row .cv {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ── Cost heatmap ────────────────────────────────────────────────────────── */
+#cost-heatmap-canvas {
+  display: block;
+  border: 1px solid var(--border2);
+  image-rendering: pixelated;
+}
+.heatmap-legend {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;
+  font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+}
+.heatmap-legend .hl-item {
+  display: flex; align-items: center; gap: 3px;
+}
+.hl-swatch {
+  display: inline-block; width: 10px; height: 10px; border: 1px solid #444;
+}
+
+/* ── Route warning banner ────────────────────────────────────────────────── */
+#route-change-warning {
+  display: none;
+  background: #332200;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+}
+
+/* ── Hazard quadrant table ───────────────────────────────────────────────── */
+.quad-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.quad-table th {
+  background: var(--bg3);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border2);
+  text-align: left;
+}
+.quad-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
 </style>
 </head>
 <body>
@@ -459,15 +578,80 @@ input.cmd-input:focus { border-color: var(--cyan); }
     </div>
   </div>
 
-  <!-- 8. Route Map -->
-  <div class="panel">
+  <!-- 8. Route Planning — full-width section -->
+  <div class="panel col-span-4">
     <div class="panel-header">
-      <span class="panel-title">Route Map</span>
+      <span class="panel-title">Route Planning</span>
       <span class="panel-badge" id="route-status-badge">--</span>
     </div>
-    <div class="panel-body" style="padding:6px;">
-      <img id="img-route" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-route-ph" class="img-placeholder">NO DATA</div>
+    <div class="panel-body" style="padding:10px;">
+
+      <!-- Change→Route impact warning -->
+      <div id="route-change-warning"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+
+        <!-- A) Route Comparison View -->
+        <div style="grid-column:1/2;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Route Comparison</div>
+          <img id="img-route-comparison" class="map-img" src="" alt="" style="display:none;">
+          <div id="img-route-comparison-ph" class="img-placeholder" style="min-height:120px;">NO DATA</div>
+          <div class="route-cards" id="route-cards">
+            <!-- filled by JS -->
+          </div>
+        </div>
+
+        <!-- B) Constraint Panel + D) Path Stats Card -->
+        <div style="grid-column:2/3;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Constraint Planner</div>
+          <div class="constraint-row">
+            <label>Max Shadow Exposure</label>
+            <input type="range" id="slider-shadow" min="0" max="100" value="50"
+                   oninput="el('val-shadow').textContent=this.value+'%'">
+            <span class="cv" id="val-shadow">50%</span>
+          </div>
+          <div class="constraint-row">
+            <label>Min Hazard Clearance</label>
+            <input type="range" id="slider-clearance" min="0" max="3" step="1" value="1"
+                   oninput="el('val-clearance').textContent=this.value">
+            <span class="cv" id="val-clearance">1</span>
+          </div>
+          <button class="btn full" onclick="runConstrainedPlan(this)">RECALCULATE</button>
+          <div id="constrained-result" style="margin-top:6px;"></div>
+
+          <hr class="divider">
+
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Selected Route Stats</div>
+          <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">No route data yet</div>
+        </div>
+
+        <!-- C) Cost Heatmap + E) Hazard Quadrant Summary -->
+        <div style="grid-column:3/4;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Cost Heatmap</div>
+          <canvas id="cost-heatmap-canvas"></canvas>
+          <div class="heatmap-legend">
+            <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;"></span>Safe(1)</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#ffdd00;"></span>Mod(5)</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#4488ff;"></span>Shadow(15)</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;"></span>Hazard(20)</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#000000;"></span>Impass</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#333344;"></span>Unsurv</div>
+          </div>
+
+          <hr class="divider">
+
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Hazard Density by Quadrant</div>
+          <table class="quad-table">
+            <thead>
+              <tr><th>Quadrant</th><th>Hazards</th><th>Shadow%</th><th>Risk</th></tr>
+            </thead>
+            <tbody id="quad-table-body">
+              <tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:6px;">No data</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
     </div>
   </div>
 
@@ -476,6 +660,7 @@ input.cmd-input:focus { border-color: var(--cyan); }
     <div class="panel-header">
       <span class="panel-title">Coverage Grid</span>
       <span id="coverage-pct-badge" class="panel-badge">0%</span>
+      <button class="btn" style="font-size:9px;padding:2px 6px;" onclick="animateCoverage()">REPLAY</button>
     </div>
     <div class="panel-body" style="padding:6px;">
       <canvas id="coverage-canvas"></canvas>
@@ -501,19 +686,7 @@ input.cmd-input:focus { border-color: var(--cyan); }
     </div>
   </div>
 
-  <!-- 11. Elevation Map -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Elevation Map</span>
-    </div>
-    <div class="panel-body" style="padding:6px;">
-      <img id="img-elevation" class="map-img" src="" alt="" style="display:none;">
-      <div id="img-elevation-ph" class="img-placeholder">NO SHADOW DATA</div>
-      <p class="note warn" style="margin-top:4px;">±15% height error at edges — flashlight divergence (documented)</p>
-    </div>
-  </div>
-
-  <!-- 12. Quality Log -->
+  <!-- 11. Quality Log -->
   <div class="panel col-span-2">
     <div class="panel-header">
       <span class="panel-title">Quality Log</span>
@@ -537,7 +710,7 @@ input.cmd-input:focus { border-color: var(--cyan); }
     </div>
   </div>
 
-  <!-- 13. Event Log (full width) -->
+  <!-- 12. Event Log (full width) -->
   <div class="panel col-span-4">
     <div class="panel-header">
       <span class="panel-title">Event Log</span>
@@ -560,12 +733,14 @@ input.cmd-input:focus { border-color: var(--cyan); }
 
 <script>
 // ─── Constants ──────────────────────────────────────────────────────────────
-const POLL_STATUS_MS  = 2000;
-const POLL_IMAGES_MS  = 3000;
-const POLL_COVERAGE_MS= 3000;
-const POLL_QUALITY_MS = 5000;
-const POLL_LOG_MS     = 3000;
-const DL_BUDGET_BYTES = 72000;  // THROTTLE_BYTES_PER_SEC * DOWNLINK_WINDOW_SEC
+const POLL_STATUS_MS   = 2000;
+const POLL_IMAGES_MS   = 3000;
+const POLL_COVERAGE_MS = 3000;
+const POLL_QUALITY_MS  = 5000;
+const POLL_LOG_MS      = 3000;
+const POLL_ROUTES_MS   = 3000;
+const POLL_HEATMAP_MS  = 5000;
+const DL_BUDGET_BYTES  = 72000;
 
 // Hazard class → CSS colour
 const HAZARD_COLOURS = {
@@ -575,6 +750,16 @@ const HAZARD_COLOURS = {
   HAZARD:     '#cc2200',
   IMPASSABLE: '#660000',
 };
+
+// Cost → heatmap colour
+function costToHeatmapColour(cost, hazardClass) {
+  if (hazardClass === 'IMPASSABLE' || cost >= 999) return '#000000';
+  if (cost <= 1)  return '#00ff88';
+  if (cost <= 5)  return '#ffdd00';
+  if (cost <= 15) return '#4488ff';
+  if (cost <= 20) return '#ff4444';
+  return '#333344';
+}
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 function el(id) { return document.getElementById(id); }
@@ -592,29 +777,32 @@ async function updateImg(imgId, phId, url) {
   const ph  = el(phId);
   try {
     const r = await fetch(url + '?t=' + Date.now());
-    if (r.status === 204) return;  // not ready yet
+    if (r.status === 204) return;
     if (!r.ok) return;
     const blob = await r.blob();
     const src  = URL.createObjectURL(blob);
     img.onload = () => { img.style.display = 'block'; if (ph) ph.style.display = 'none'; };
     img.src = src;
-  } catch(e) { /* network blip — keep last image */ }
+  } catch(e) {}
 }
 
 // ─── Status poll ────────────────────────────────────────────────────────────
+let _lastStatusData = null;
+let _lastRouteData  = null;
+
 async function pollStatus() {
   try {
     const r = await fetch('/api/status');
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
 
-    // Connection indicator
     el('conn-dot').className = 'live';
     el('conn-label').textContent = 'LIVE';
     setText('server-time', d.server_time ? d.server_time.replace('T',' ').slice(0,19) + ' UTC' : '--');
 
     const m = d.mission || {};
     const t = d.telemetry || {};
+    _lastStatusData = d;
 
     // ── Mission Status panel ──
     const stateStr = t.state || '--';
@@ -675,20 +863,11 @@ async function pollStatus() {
       el('img-change').classList.add('change-active');
     }
 
-    // ── Route badge ──
-    const routeBadge = el('route-status-badge');
-    if (route.status === 'found') {
-      routeBadge.textContent = `FOUND · ${route.path_length} cells`;
-      routeBadge.style.borderColor = 'var(--green)';
-      routeBadge.style.color = 'var(--green)';
-    } else if (route.status === 'no viable route') {
-      routeBadge.textContent = 'NO VIABLE ROUTE';
-      routeBadge.style.borderColor = 'var(--red)';
-      routeBadge.style.color = 'var(--red)';
-    }
-
     // ── Coverage badge ──
     el('coverage-pct-badge').textContent = cov.pct != null ? cov.pct + '%' : '0%';
+
+    // ── Change→Route impact check ──
+    if (_lastRouteData) checkChangeRouteImpact(d, _lastRouteData);
 
   } catch(e) {
     el('conn-dot').className = '';
@@ -703,13 +882,255 @@ function fmtFmt(sec) {
   return (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's';
 }
 
+// ─── Routes poll ─────────────────────────────────────────────────────────────
+async function pollRoutes() {
+  try {
+    const r = await fetch('/api/routes');
+    if (!r.ok) return;
+    const routes = await r.json();
+    _lastRouteData = routes;
+    renderRouteCards(routes);
+    renderPathStatsCard(routes);
+    if (_lastStatusData) checkChangeRouteImpact(_lastStatusData, routes);
+  } catch(e) {}
+}
+
+function renderRouteCards(routes) {
+  const selected = routes.selected || 'safest';
+  const names = ['fastest', 'safest', 'balanced'];
+  const colours = { fastest: '#00ff88', safest: '#ffaa00', balanced: '#ff4444' };
+
+  const container = el('route-cards');
+  container.innerHTML = '';
+
+  for (const name of names) {
+    const rd = routes[name];
+    if (!rd) continue;
+    const card = document.createElement('div');
+    card.className = 'route-card' + (name === selected ? ' selected-card' : '');
+    card.onclick = () => selectRoute(name);
+
+    const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
+    const statusTxt = rd.status === 'found'
+      ? `<span class="${riskClass} risk-badge">${rd.risk_level}</span>`
+      : `<span class="risk-badge risk-HIGH">NO PATH</span>`;
+
+    card.innerHTML = `
+      <div class="rc-name">
+        <span class="rc-dot" style="background:${colours[name]};"></span>
+        ${rd.name || name}
+        ${statusTxt}
+      </div>
+      <div class="rc-kv"><span>Distance</span><span class="rv">${rd.path_length_cells ?? '--'} cells / ${rd.distance_cm ?? '--'} cm</span></div>
+      <div class="rc-kv"><span>Shadow</span><span class="rv">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
+      <div class="rc-kv"><span>Hazards Near</span><span class="rv">${rd.hazards_near_path ?? '--'}</span></div>
+      <div class="rc-kv"><span>Cost</span><span class="rv">${rd.total_cost != null ? rd.total_cost.toFixed(1) : '--'}</span></div>
+    `;
+    container.appendChild(card);
+  }
+
+  // Update route status badge
+  const selRoute = routes[selected];
+  const routeBadge = el('route-status-badge');
+  if (selRoute && selRoute.status === 'found') {
+    routeBadge.textContent = `${(selRoute.name||selected).toUpperCase()} · ${selRoute.path_length_cells} cells`;
+    routeBadge.style.borderColor = 'var(--green)';
+    routeBadge.style.color = 'var(--green)';
+  } else if (selRoute && selRoute.status !== 'found') {
+    routeBadge.textContent = 'NO VIABLE ROUTE';
+    routeBadge.style.borderColor = 'var(--red)';
+    routeBadge.style.color = 'var(--red)';
+  }
+}
+
+function renderPathStatsCard(routes) {
+  const selected = routes.selected || 'safest';
+  const rd = routes[selected];
+  const statsEl = el('path-stats-card');
+  if (!rd) { statsEl.textContent = 'No route data'; return; }
+
+  const recMap = {
+    LOW:      'Suitable for surface expedition',
+    MODERATE: 'Proceed with caution',
+    HIGH:     'High-risk — consider alternate path',
+  };
+  const rec = recMap[rd.risk_level] || '--';
+  const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
+
+  statsEl.innerHTML = `
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Route</span><span class="v">${rd.name || selected}</span></div>
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Start→End</span><span class="v">[0,0]→[7,7]</span></div>
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Distance</span><span class="v">${rd.path_length_cells} cells / ${rd.distance_cm} cm</span></div>
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Shadow %</span><span class="v">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
+    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Hazards Near</span><span class="v">${rd.hazards_near_path}</span></div>
+    <div class="kv" style="border:none;padding:2px 0;"><span class="k">Risk</span><span class="v"><span class="${riskClass} risk-badge">${rd.risk_level}</span></span></div>
+    <div style="margin-top:6px;font-size:10px;color:var(--text-dim);">${rec}</div>
+  `;
+}
+
+async function selectRoute(name) {
+  try {
+    await fetch('/api/select_route', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({route_name: name}),
+    });
+    await pollRoutes();
+  } catch(e) {}
+}
+
+// ─── Constrained route planner ────────────────────────────────────────────────
+async function runConstrainedPlan(btn) {
+  const maxShadow = parseFloat(el('slider-shadow').value);
+  const clearance = parseInt(el('slider-clearance').value);
+  btn.disabled = true;
+  btn.textContent = 'PLANNING...';
+  try {
+    const r = await fetch('/api/plan_constrained', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({max_shadow_pct: maxShadow, min_hazard_clearance: clearance}),
+    });
+    const rd = await r.json();
+    const resultEl = el('constrained-result');
+    if (rd.status === 'found') {
+      const riskClass = 'risk-' + (rd.risk_level || 'MODERATE');
+      resultEl.innerHTML = `
+        <div style="border:1px solid var(--green);padding:6px;font-family:var(--mono);font-size:10px;">
+          <div style="color:var(--green);margin-bottom:4px;">FEASIBLE ROUTE FOUND</div>
+          <div class="rc-kv"><span>Length</span><span class="rv">${rd.path_length_cells} cells / ${rd.distance_cm} cm</span></div>
+          <div class="rc-kv"><span>Shadow</span><span class="rv">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
+          <div class="rc-kv"><span>Risk</span><span class="rv"><span class="${riskClass} risk-badge">${rd.risk_level}</span></span></div>
+        </div>`;
+    } else {
+      resultEl.innerHTML = `<div style="border:1px solid var(--red);padding:6px;font-family:var(--mono);font-size:10px;color:var(--red);">No route meets these constraints</div>`;
+    }
+    flashBtn(btn, rd.status === 'found');
+  } catch(e) {
+    flashBtn(btn, false);
+  }
+  btn.disabled = false;
+  btn.textContent = 'RECALCULATE';
+}
+
+// ─── Cost heatmap ─────────────────────────────────────────────────────────────
+let _heatmapData = null;
+
+async function pollCostHeatmap() {
+  try {
+    const r = await fetch('/api/cost_heatmap');
+    if (!r.ok) return;
+    const d = await r.json();
+    _heatmapData = d;
+    drawCostHeatmap(d);
+    renderQuadrantSummary(d);
+  } catch(e) {}
+}
+
+function drawCostHeatmap(data) {
+  const canvas = el('cost-heatmap-canvas');
+  const rows = data.rows || 8;
+  const cols = data.cols || 8;
+  const parentW = canvas.parentElement ? canvas.parentElement.offsetWidth : 200;
+  const cell = Math.floor(Math.min(parentW / cols, 32));
+  canvas.width  = cell * cols;
+  canvas.height = cell * rows;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const cd of (data.cells || [])) {
+    const x = cd.col * cell;
+    const y = cd.row * cell;
+    ctx.fillStyle = costToHeatmapColour(cd.cost, cd.hazard_class);
+    ctx.fillRect(x, y, cell - 1, cell - 1);
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `${Math.max(6, cell * 0.28)}px monospace`;
+    ctx.fillText(`${cd.row},${cd.col}`, x + 1, y + cell - 2);
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#1a2030';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= rows; i++) {
+    ctx.beginPath(); ctx.moveTo(0, i*cell); ctx.lineTo(cols*cell, i*cell); ctx.stroke();
+  }
+  for (let j = 0; j <= cols; j++) {
+    ctx.beginPath(); ctx.moveTo(j*cell, 0); ctx.lineTo(j*cell, rows*cell); ctx.stroke();
+  }
+}
+
+function renderQuadrantSummary(data) {
+  const cells = data.cells || [];
+  const quads = [
+    { name: 'NW', rMin: 0, rMax: 3, cMin: 0, cMax: 3 },
+    { name: 'NE', rMin: 0, rMax: 3, cMin: 4, cMax: 7 },
+    { name: 'SW', rMin: 4, rMax: 7, cMin: 0, cMax: 3 },
+    { name: 'SE', rMin: 4, rMax: 7, cMin: 4, cMax: 7 },
+  ];
+  const tbody = el('quad-table-body');
+  tbody.innerHTML = '';
+  for (const q of quads) {
+    const qCells = cells.filter(c => c.row >= q.rMin && c.row <= q.rMax && c.col >= q.cMin && c.col <= q.cMax);
+    const hazardCount = qCells.filter(c => c.hazard_class === 'HAZARD').length;
+    const shadowCount = qCells.filter(c => c.hazard_class === 'SHADOW').length;
+    const shadowPct = qCells.length ? (shadowCount / qCells.length * 100).toFixed(0) : '--';
+    let risk = 'LOW';
+    if (hazardCount > 2 || shadowCount > 4) risk = 'HIGH';
+    else if (hazardCount > 0 || shadowCount > 2) risk = 'MODERATE';
+    const riskClass = 'risk-' + risk;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${q.name}</td><td>${hazardCount}</td><td>${shadowPct}%</td><td><span class="${riskClass} risk-badge">${risk}</span></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// ─── Change→Route impact warning ─────────────────────────────────────────────
+function checkChangeRouteImpact(statusData, routeData) {
+  const changedCells = (statusData.mission?.changes?.cells_with_changes) || [];
+  if (!changedCells.length || !routeData) {
+    el('route-change-warning').style.display = 'none';
+    return;
+  }
+
+  const selected = routeData.selected || 'safest';
+  const routeNames = ['fastest', 'safest', 'balanced'];
+  const warnings = [];
+
+  for (const name of routeNames) {
+    const rd = routeData[name];
+    if (!rd || !rd.path) continue;
+    for (const changed of changedCells) {
+      const cr = changed[0], cc = changed[1];
+      const onPath = rd.path.some(([r, c]) => r === cr && c === cc);
+      if (onPath) {
+        warnings.push(`⚠ Change in cell (${cr},${cc}) — ${rd.name} passes through this cell.`);
+      }
+    }
+  }
+
+  const warnEl = el('route-change-warning');
+  if (warnings.length) {
+    warnEl.style.display = 'block';
+    warnEl.textContent = warnings.join(' ') + (selected !== 'safest' ? ' Recommend Safest Route.' : '');
+  } else {
+    warnEl.style.display = 'none';
+  }
+}
+
 // ─── Coverage canvas ─────────────────────────────────────────────────────────
+let _coverageData = null;
+let _coverageAnimating = false;
+
 async function pollCoverage() {
   try {
     const r = await fetch('/api/coverage');
     if (!r.ok) return;
     const d = await r.json();
-    drawCoverage(d.grid, d.rows, d.cols);
+    _coverageData = d;
+    if (!_coverageAnimating) drawCoverage(d.grid, d.rows, d.cols);
   } catch(e) {}
 }
 
@@ -728,36 +1149,21 @@ function drawCoverage(grid, rows, cols) {
       const x = c * cell, y = r * cell;
       const cls = cell_data.hazard_class;
 
-      // Fill
-      if (cls === 'SAFE' || (!cell_data.has_change && cls)) {
-        ctx.fillStyle = HAZARD_COLOURS[cls] || '#222';
-      } else {
-        ctx.fillStyle = '#222';
-      }
-
-      // Surveyed vs not
-      const surveyed = cls && cls !== 'SAFE' || cell_data.cost > 1 || cell_data.has_change;
-      // Actually: any cell that has been classified is surveyed
-      // We'll treat cost > 0 as surveyed (all cells start at COST_SAFE=1)
-      // so we check has_change or cost != COST_SAFE
       ctx.fillStyle = HAZARD_COLOURS[cls] ? HAZARD_COLOURS[cls] : '#1a1a1a';
       ctx.fillRect(x, y, cell - 1, cell - 1);
 
-      // Orange border if change detected
       if (cell_data.has_change) {
         ctx.strokeStyle = '#ff9500';
         ctx.lineWidth = 2;
         ctx.strokeRect(x + 1, y + 1, cell - 3, cell - 3);
       }
 
-      // Cell label
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = `${Math.max(7, cell * 0.3)}px monospace`;
       ctx.fillText(`${r},${c}`, x + 2, y + cell - 3);
     }
   }
 
-  // Grid lines
   ctx.strokeStyle = '#2a3040';
   ctx.lineWidth = 1;
   for (let i = 0; i <= rows; i++) {
@@ -766,6 +1172,57 @@ function drawCoverage(grid, rows, cols) {
   for (let j = 0; j <= cols; j++) {
     ctx.beginPath(); ctx.moveTo(j * cell, 0); ctx.lineTo(j * cell, rows * cell); ctx.stroke();
   }
+}
+
+function animateCoverage() {
+  if (!_coverageData || _coverageAnimating) return;
+  const grid = _coverageData.grid;
+  const rows = _coverageData.rows;
+  const cols = _coverageData.cols;
+
+  // Group cells by (simulated) pass — use cost as proxy for surveyed order
+  const passes = [[], [], []];
+  for (const row of grid) {
+    for (const cd of row) {
+      if (cd.cost <= 1 && cd.hazard_class === 'SAFE' && !cd.has_change) {
+        passes[0].push(cd);
+      } else if (cd.hazard_class && cd.hazard_class !== 'SAFE') {
+        passes[1].push(cd);
+      } else {
+        passes[2].push(cd);
+      }
+    }
+  }
+
+  _coverageAnimating = true;
+  const canvas = el('coverage-canvas');
+  const ctx = canvas.getContext('2d');
+  const cell = Math.floor(canvas.parentElement.offsetWidth / cols) || 24;
+  canvas.width  = cell * cols;
+  canvas.height = cell * rows;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const steps = [[], ...passes];
+  let step = 0;
+
+  function nextStep() {
+    if (step >= steps.length) {
+      _coverageAnimating = false;
+      drawCoverage(grid, rows, cols);
+      return;
+    }
+    for (const cd of steps[step]) {
+      const x = cd.col * cell, y = cd.row * cell;
+      ctx.fillStyle = HAZARD_COLOURS[cd.hazard_class] || '#1a1a1a';
+      ctx.fillRect(x, y, cell - 1, cell - 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = `${Math.max(7, cell * 0.3)}px monospace`;
+      ctx.fillText(`${cd.row},${cd.col}`, x + 2, y + cell - 3);
+    }
+    step++;
+    setTimeout(nextStep, 800);
+  }
+  nextStep();
 }
 
 // ─── Quality log ─────────────────────────────────────────────────────────────
@@ -790,7 +1247,6 @@ async function pollQuality() {
         <td>${e.status || '--'}</td>`;
       tbody.appendChild(tr);
     }
-    // Scroll to bottom
     const scroll = tbody.closest('.panel-body');
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
   } catch(e) {}
@@ -811,7 +1267,6 @@ async function pollLog() {
       else if (/WARNING/.test(line))   cls = 'line-warn';
       return `<span class="${cls}">${escHtml(line)}\n</span>`;
     }).join('');
-    // Auto-scroll
     const scroll = el('log-scroll');
     scroll.scrollTop = scroll.scrollHeight;
   } catch(e) {}
@@ -882,12 +1337,11 @@ async function sendLLM() {
 
 // ─── Poll loops ──────────────────────────────────────────────────────────────
 function pollImages() {
-  updateImg('img-latest',    'img-latest-ph',    '/api/latest_image');
-  updateImg('img-hazard',    'img-hazard-ph',    '/api/hazard_map');
-  updateImg('img-change',    'img-change-ph',    '/api/change_map');
-  updateImg('img-route',     'img-route-ph',     '/api/route_map');
-  updateImg('img-mosaic',    'img-mosaic-ph',    '/api/mosaic');
-  updateImg('img-elevation', 'img-elevation-ph', '/api/elevation');
+  updateImg('img-latest',           'img-latest-ph',           '/api/latest_image');
+  updateImg('img-hazard',           'img-hazard-ph',           '/api/hazard_map');
+  updateImg('img-change',           'img-change-ph',           '/api/change_map');
+  updateImg('img-route-comparison', 'img-route-comparison-ph', '/api/route_comparison_image');
+  updateImg('img-mosaic',           'img-mosaic-ph',           '/api/mosaic');
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -896,12 +1350,16 @@ pollImages();
 pollCoverage();
 pollQuality();
 pollLog();
+pollRoutes();
+pollCostHeatmap();
 
-setInterval(pollStatus,   POLL_STATUS_MS);
-setInterval(pollImages,   POLL_IMAGES_MS);
-setInterval(pollCoverage, POLL_COVERAGE_MS);
-setInterval(pollQuality,  POLL_QUALITY_MS);
-setInterval(pollLog,      POLL_LOG_MS);
+setInterval(pollStatus,      POLL_STATUS_MS);
+setInterval(pollImages,      POLL_IMAGES_MS);
+setInterval(pollCoverage,    POLL_COVERAGE_MS);
+setInterval(pollQuality,     POLL_QUALITY_MS);
+setInterval(pollLog,         POLL_LOG_MS);
+setInterval(pollRoutes,      POLL_ROUTES_MS);
+setInterval(pollCostHeatmap, POLL_HEATMAP_MS);
 </script>
 </body>
 </html>

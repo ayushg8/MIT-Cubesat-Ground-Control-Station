@@ -106,19 +106,6 @@ class MissionState:
                 if list(cell) not in cells_list:
                     cells_list.append(list(cell))
 
-    def record_elevation_result(self, elevation_metadata: dict):
-        """Call after ElevationMapper.compute() — only when result is not None."""
-        with self._lock:
-            el = self._state["elevation"]
-            new_max = elevation_metadata.get("max_height_cm", 0.0)
-            if new_max > el["max_height_cm"]:
-                el["max_height_cm"] = new_max
-            el["shadow_regions_analyzed"] += elevation_metadata.get("shadow_regions_analyzed", 0)
-            el["gsd_cm_per_pixel"] = elevation_metadata.get("gsd_cm_per_pixel", el["gsd_cm_per_pixel"])
-            el["divergence_error_note"] = elevation_metadata.get(
-                "divergence_error_note", el["divergence_error_note"]
-            )
-
     def record_route_result(self, route_result: dict):
         """Call after RoutePlanner.plan() — overwrites route section (latest plan)."""
         with self._lock:
@@ -130,6 +117,16 @@ class MissionState:
                 "shadow_exposure_pct": route_result.get("shadow_exposure_pct", 0.0),
                 "status":              route_result.get("status", "unknown"),
             }
+
+    def record_route_comparison(self, routes_dict: dict):
+        """Call after RoutePlanner.plan_multiple_routes() — stores all 3 routes."""
+        with self._lock:
+            r = self._state["routes"]
+            for name in ("fastest", "safest", "balanced"):
+                if name in routes_dict:
+                    r[name] = routes_dict[name]
+            if r["selected"] is None:
+                r["selected"] = "safest"
 
     def record_downlink_bytes(self, n_bytes: int, duration_sec: float, success: bool):
         """Call from receiver/listener.py after each completed (or failed) transfer."""
@@ -251,13 +248,12 @@ class MissionState:
                 "shadow_exposure_pct": 0.0,
                 "status": "not yet planned",
             },
-            "elevation": {
-                "max_height_cm": 0.0,
-                "shadow_regions_analyzed": 0,
-                "gsd_cm_per_pixel": config.GSD_CM_PER_PIXEL,
-                "divergence_error_note": (
-                    "\u00b115% at surface edges due to non-parallel flashlight illumination"
-                ),
+            "routes": {
+                "fastest": None,
+                "safest": None,
+                "balanced": None,
+                "selected": None,
+                "constrained": None,
             },
             "downlink": {
                 "total_bytes": 0,

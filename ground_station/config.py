@@ -8,15 +8,6 @@ COMMAND_PORT = 5001
 LISTEN_HOST = "0.0.0.0"
 CUBESAT_IP = ""                    # Fill in: CubeSat's real IP on the shared network
 
-# === PHYSICAL SETUP (MEASURED before demo) ===
-# These are NOT guesses or defaults — measure with real tools before demo.
-CAMERA_HEIGHT_CM = 0.0             # Ruler: lens to surface (cm)
-# GSD formula: GSD_CM_PER_PIXEL = (1.4 * CAMERA_HEIGHT_CM) / 4740
-GSD_CM_PER_PIXEL = 0.0             # Fill in after measuring CAMERA_HEIGHT_CM
-FLASHLIGHT_ELEVATION_DEG = 0.0     # Protractor: angle above horizontal (degrees)
-FLASHLIGHT_AZIMUTH_DEG = 0.0       # Compass: direction flashlight points from (degrees)
-FLASHLIGHT_DISTANCE_CM = 0.0       # Ruler: flashlight to surface center (cm)
-
 # === STORAGE ===
 RECEIVED_DIR = "data/received_images"
 PROCESSED_DIR = "data/processed"
@@ -49,6 +40,7 @@ GRID_ROWS = 8
 GRID_COLS = 8
 ROUTE_START = (0, 0)
 ROUTE_END = (7, 7)
+GRID_CELL_SIZE_CM = 10.0           # Physical size of each grid cell (cm)
 
 # === DASHBOARD ===
 DASHBOARD_PORT = 3000

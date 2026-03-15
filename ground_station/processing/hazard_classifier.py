@@ -6,19 +6,23 @@
 #
 # Classification is NOT a sub-grid within the image. One image → one cell → one class.
 #
-# Detection cascade (in priority order):
-#   1. IMPASSABLE — >50% of image covered by hazard contours
-#   2. SHADOW     — >30% of image is shadow (from shadow_mask)
-#   3. HAZARD     — large dark circular contour (crater) OR small bright irregular (boulder)
-#   4. MODERATE   — high local texture variance
-#   5. SAFE       — default (well-lit, low variance, no triggers)
+# Multi-feature classification using:
+#   1. LBP texture variance (sand vs rock discrimination)
+#   2. Canny edge density (smooth vs rough terrain)
+#   3. Brightness statistics (mean + std)
+#   4. Shadow percentage (from shadow detector)
+#   5. Contour features (count, size, circularity → crater vs boulder)
+#
+# Each classification includes a confidence score (0.0–1.0).
 
 import json
 import logging
+import math
 import os
 
 import cv2
 import numpy as np
+from skimage.feature import local_binary_pattern
 
 import config
 
@@ -40,14 +44,14 @@ _COLOURS = {
     IMPASSABLE: (0,    0,  120),    # dark red
 }
 
-# Thresholds
-_SHADOW_PCT_THRESHOLD    = 30.0   # % shadow → SHADOW class
-_IMPASSABLE_COVERAGE_PCT = 50.0   # % hazard contour area → IMPASSABLE
-_MODERATE_VARIANCE       = 300.0  # local patch variance above this → MODERATE
-_CRATER_MIN_AREA         = 500    # px² — minimum dark circular blob for crater
-_BOULDER_MAX_AREA        = 300    # px² — maximum bright irregular blob for boulder
-_CRATER_CIRCULARITY_MIN  = 0.55   # 4π·area/perimeter² — how round a crater must be
-_PATCH_SIZE              = 16     # for local variance check
+# Shadow threshold
+_SHADOW_PCT_THRESHOLD    = 40.0   # % shadow → SHADOW class
+_SHADOW_PCT_MODERATE     = 20.0   # % shadow below this for SAFE
+
+# Contour thresholds
+_MIN_SIGNIFICANT_CONTOUR_AREA = 50   # px² — minimum contour to count
+_CRATER_CIRCULARITY_MIN       = 0.55
+_IMPASSABLE_COVERAGE_PCT      = 50.0
 
 
 class HazardClassifier:
@@ -60,21 +64,17 @@ class HazardClassifier:
         grid_cell: tuple,
     ) -> dict:
         """
-        Classify a single image (= one grid cell) into a hazard class.
-
-        Args:
-            image_path:        Path to the saved JPEG.
-            shadow_mask:       uint8 numpy array from ShadowDetector (255=shadow).
-            shadow_percentage: Float from ShadowDetector (0–100).
-            grid_cell:         (row, col) tuple identifying which cell this image covers.
+        Classify a single image (= one grid cell) into a hazard class
+        using multi-feature analysis.
 
         Returns dict:
             {
-                "hazard_class":  str  (SAFE / MODERATE / SHADOW / HAZARD / IMPASSABLE),
-                "cost":          int,
-                "grid_cell":     (row, col),
+                "hazard_class":    str  (SAFE / MODERATE / SHADOW / HAZARD / IMPASSABLE),
+                "cost":            int,
+                "grid_cell":       (row, col),
                 "hazard_map_path": str,
-                "details":       dict  (diagnostic info for logs/dashboard),
+                "confidence":      float (0.0–1.0),
+                "details":         dict  (all extracted features),
             }
         """
         img = cv2.imread(image_path)
@@ -86,118 +86,226 @@ class HazardClassifier:
         h, w = gray.shape
         total_px = h * w
 
-        # --- Step 1: find hazard contours (dark circles + bright irregular blobs) ---
-        hazard_mask, details = _find_hazard_contours(gray, total_px)
-        hazard_coverage_pct = float(np.sum(hazard_mask > 0)) / total_px * 100.0
+        # ── Extract all features ──────────────────────────────────────────
+        features = _extract_features(gray, shadow_mask, shadow_percentage, total_px)
 
-        # --- Classification cascade ---
-        if hazard_coverage_pct >= _IMPASSABLE_COVERAGE_PCT:
-            hazard_class = IMPASSABLE
-        elif shadow_percentage >= _SHADOW_PCT_THRESHOLD:
-            hazard_class = SHADOW
-        elif details["has_crater"] or details["has_boulder"]:
-            hazard_class = HAZARD
-        elif _high_texture_variance(gray):
-            hazard_class = MODERATE
-        else:
-            hazard_class = SAFE
+        # ── Classify using decision tree ──────────────────────────────────
+        hazard_class, confidence, hazard_mask = _classify_features(
+            gray, features, total_px
+        )
 
         cost = _cost(hazard_class)
 
-        details.update({
-            "shadow_pct": round(shadow_percentage, 1),
-            "hazard_coverage_pct": round(hazard_coverage_pct, 1),
-        })
-
         logger.info(
-            f"HazardClassifier: cell {grid_cell} → {hazard_class} (cost={cost}) | "
-            f"shadow={shadow_percentage:.1f}% hazard_cov={hazard_coverage_pct:.1f}% "
-            f"crater={details['has_crater']} boulder={details['has_boulder']}"
+            f"HazardClassifier: cell {grid_cell} → {hazard_class} "
+            f"(cost={cost}, conf={confidence:.2f}) | "
+            f"lbp_var={features['lbp_variance']:.0f} "
+            f"edge_den={features['edge_density']:.3f} "
+            f"shadow={features['shadow_pct']:.1f}% "
+            f"contours={features['significant_contour_count']}"
         )
 
-        map_path = _save_hazard_map(image_path, img, shadow_mask, hazard_mask, hazard_class, grid_cell)
+        map_path = _save_hazard_map(
+            image_path, img, shadow_mask, hazard_mask, hazard_class, grid_cell, confidence
+        )
 
         return {
             "hazard_class": hazard_class,
             "cost": cost,
             "grid_cell": grid_cell,
             "hazard_map_path": map_path,
-            "details": details,
+            "confidence": round(confidence, 3),
+            "details": features,
         }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Internal helpers
+# Feature extraction
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _find_hazard_contours(gray: np.ndarray, total_px: int) -> tuple:
-    """
-    Find dark circular contours (craters) and small bright irregular blobs (boulders).
-    Returns (hazard_mask uint8, details dict).
-    """
-    hazard_mask = np.zeros_like(gray, dtype=np.uint8)
-    has_crater = False
-    has_boulder = False
-    crater_count = 0
-    boulder_count = 0
+def _extract_features(
+    gray: np.ndarray,
+    shadow_mask: np.ndarray,
+    shadow_percentage: float,
+    total_px: int,
+) -> dict:
+    """Extract all five feature groups from the grayscale cell image."""
 
-    # — Craters: dark, roughly circular —
-    # Threshold to dark pixels, find contours, check area + circularity
-    _, dark_thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    dark_contours, _ = cv2.findContours(dark_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Feature 1: LBP texture variance
+    lbp = local_binary_pattern(gray, P=8, R=1, method='uniform')
+    lbp_variance = float(np.var(lbp))
 
-    for cnt in dark_contours:
+    # Feature 2: Canny edge density
+    edges = cv2.Canny(gray, 50, 150)
+    edge_density = float(np.count_nonzero(edges)) / total_px
+
+    # Feature 3: Brightness statistics
+    mean_brightness = float(np.mean(gray))
+    std_brightness = float(np.std(gray))
+
+    # Feature 4: Shadow percentage (passed in from shadow detector)
+    shadow_pct = shadow_percentage
+
+    # Feature 5: Contour features from edge detection
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    significant_contours = []
+    for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < _CRATER_MIN_AREA:
-            continue
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0:
-            continue
-        circularity = (4 * np.pi * area) / (perimeter ** 2)
-        if circularity >= _CRATER_CIRCULARITY_MIN:
-            cv2.drawContours(hazard_mask, [cnt], -1, 255, thickness=cv2.FILLED)
-            has_crater = True
-            crater_count += 1
+        if area >= _MIN_SIGNIFICANT_CONTOUR_AREA:
+            perimeter = cv2.arcLength(cnt, True)
+            circularity = (4 * math.pi * area) / (perimeter ** 2) if perimeter > 0 else 0.0
+            significant_contours.append({
+                "area": area,
+                "perimeter": perimeter,
+                "circularity": circularity,
+            })
 
-    # — Boulders: small bright irregular blobs —
-    mean_brightness = float(gray.mean())
-    bright_thresh_val = int(min(255, mean_brightness + 40))
-    _, bright_thresh = cv2.threshold(gray, bright_thresh_val, 255, cv2.THRESH_BINARY)
-    bright_contours, _ = cv2.findContours(bright_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    significant_contour_count = len(significant_contours)
+    largest_contour_area = max((c["area"] for c in significant_contours), default=0.0)
+    largest_contour_circularity = 0.0
+    if significant_contours:
+        largest = max(significant_contours, key=lambda c: c["area"])
+        largest_contour_circularity = largest["circularity"]
 
-    for cnt in bright_contours:
-        area = cv2.contourArea(cnt)
-        if area < 20 or area > _BOULDER_MAX_AREA:
-            continue
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0:
-            continue
-        circularity = (4 * np.pi * area) / (perimeter ** 2)
-        if circularity < 0.5:  # irregular = not circular → boulder-shaped
-            cv2.drawContours(hazard_mask, [cnt], -1, 255, thickness=cv2.FILLED)
-            has_boulder = True
-            boulder_count += 1
+    # Total contour area coverage
+    total_contour_area = sum(c["area"] for c in significant_contours)
+    contour_coverage_pct = total_contour_area / total_px * 100.0
 
-    return hazard_mask, {
-        "has_crater": has_crater,
-        "has_boulder": has_boulder,
-        "crater_count": crater_count,
-        "boulder_count": boulder_count,
+    return {
+        "lbp_variance": round(lbp_variance, 1),
+        "edge_density": round(edge_density, 4),
+        "mean_brightness": round(mean_brightness, 1),
+        "std_brightness": round(std_brightness, 1),
+        "shadow_pct": round(shadow_pct, 1),
+        "significant_contour_count": significant_contour_count,
+        "largest_contour_area": round(largest_contour_area, 0),
+        "largest_contour_circularity": round(largest_contour_circularity, 3),
+        "contour_coverage_pct": round(contour_coverage_pct, 1),
     }
 
 
-def _high_texture_variance(gray: np.ndarray) -> bool:
-    """Return True if mean local patch variance exceeds MODERATE threshold."""
-    h, w = gray.shape
-    variances = []
-    for r in range(0, h - _PATCH_SIZE + 1, _PATCH_SIZE):
-        for c in range(0, w - _PATCH_SIZE + 1, _PATCH_SIZE):
-            patch = gray[r:r + _PATCH_SIZE, c:c + _PATCH_SIZE]
-            variances.append(float(np.var(patch)))
-    if not variances:
-        return False
-    return float(np.mean(variances)) > _MODERATE_VARIANCE
+# ─────────────────────────────────────────────────────────────────────────────
+# Classification decision tree
+# ─────────────────────────────────────────────────────────────────────────────
 
+def _classify_features(
+    gray: np.ndarray,
+    features: dict,
+    total_px: int,
+) -> tuple:
+    """
+    Apply decision tree to extracted features.
+    Returns (hazard_class, confidence, hazard_mask).
+    """
+    lbp_var    = features["lbp_variance"]
+    edge_den   = features["edge_density"]
+    shadow_pct = features["shadow_pct"]
+    n_contours = features["significant_contour_count"]
+    largest_area = features["largest_contour_area"]
+    largest_circ = features["largest_contour_circularity"]
+    contour_cov  = features["contour_coverage_pct"]
+    mean_bright  = features["mean_brightness"]
+
+    lbp_high  = config.LBP_VARIANCE_HIGH
+    lbp_mod   = config.LBP_VARIANCE_MODERATE
+    edge_high = config.EDGE_DENSITY_HIGH
+    edge_mod  = config.EDGE_DENSITY_MODERATE
+
+    hazard_mask = np.zeros_like(gray, dtype=np.uint8)
+
+    # Build hazard mask from Canny edges for visualization
+    edges = cv2.Canny(gray, 50, 150)
+
+    # ── Decision tree (priority order) ────────────────────────────────
+
+    # 1. IMPASSABLE: massive contour coverage (>50% of cell)
+    if contour_cov >= _IMPASSABLE_COVERAGE_PCT:
+        hazard_mask = edges
+        conf = _confidence_above(contour_cov, _IMPASSABLE_COVERAGE_PCT, 80.0)
+        return IMPASSABLE, conf, hazard_mask
+
+    # 2. SHADOW: high shadow coverage (>40%)
+    if shadow_pct > _SHADOW_PCT_THRESHOLD:
+        conf = _confidence_above(shadow_pct, _SHADOW_PCT_THRESHOLD, 80.0)
+        return SHADOW, conf, hazard_mask
+
+    # 3. HAZARD — crater: high edges + high texture + large circular dark contour
+    is_crater = (
+        edge_den > edge_high
+        and lbp_var > lbp_high
+        and largest_circ >= _CRATER_CIRCULARITY_MIN
+        and largest_area >= 500
+        and mean_bright < 140
+    )
+    if is_crater:
+        hazard_mask = edges
+        conf = min(
+            _confidence_above(edge_den, edge_high, 0.3),
+            _confidence_above(lbp_var, lbp_high, 1000),
+        )
+        return HAZARD, conf, hazard_mask
+
+    # 4. HAZARD — boulder: high edges + high texture + small bright irregular contours
+    is_boulder = (
+        edge_den > edge_high
+        and lbp_var > lbp_high
+        and largest_circ < 0.5
+        and n_contours >= 3
+        and mean_bright > 100
+    )
+    if is_boulder:
+        hazard_mask = edges
+        conf = min(
+            _confidence_above(edge_den, edge_high, 0.3),
+            _confidence_above(lbp_var, lbp_high, 1000),
+        )
+        return HAZARD, conf, hazard_mask
+
+    # 5. MODERATE: elevated edges or texture
+    if edge_den > edge_mod or lbp_var > lbp_mod:
+        # Confidence based on how far above the moderate threshold
+        conf_edge = _confidence_above(edge_den, edge_mod, edge_high) if edge_den > edge_mod else 0.5
+        conf_lbp  = _confidence_above(lbp_var, lbp_mod, lbp_high) if lbp_var > lbp_mod else 0.5
+        conf = max(conf_edge, conf_lbp)
+        return MODERATE, conf, hazard_mask
+
+    # 6. SAFE: low edges, low texture, low shadow
+    if edge_den < edge_mod and lbp_var < lbp_mod and shadow_pct < _SHADOW_PCT_MODERATE:
+        # Higher confidence when further from thresholds
+        conf_edge = _confidence_below(edge_den, edge_mod)
+        conf_lbp  = _confidence_below(lbp_var, lbp_mod)
+        conf = min(conf_edge, conf_lbp)
+        return SAFE, conf, hazard_mask
+
+    # Fallback SAFE with lower confidence
+    return SAFE, 0.5, hazard_mask
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Confidence helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _confidence_above(value: float, threshold: float, max_range: float) -> float:
+    """Confidence for a value above a threshold. Higher = more confident."""
+    if max_range <= threshold:
+        return 0.85
+    distance = value - threshold
+    normalized = min(distance / (max_range - threshold), 1.0)
+    return round(0.55 + 0.45 * normalized, 3)
+
+
+def _confidence_below(value: float, threshold: float) -> float:
+    """Confidence for a value below a threshold. Lower value = more confident."""
+    if threshold <= 0:
+        return 0.85
+    ratio = value / threshold
+    return round(0.55 + 0.45 * (1.0 - ratio), 3)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cost + visualization helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _cost(hazard_class: str) -> int:
     return {
@@ -216,6 +324,7 @@ def _save_hazard_map(
     hazard_mask: np.ndarray,
     hazard_class: str,
     grid_cell: tuple,
+    confidence: float,
 ) -> str:
     """Overlay shadow (blue) and hazard (red) regions on the image + legend banner."""
     os.makedirs(os.path.join(config.PROCESSED_DIR, "hazard_maps"), exist_ok=True)
@@ -229,11 +338,11 @@ def _save_hazard_map(
     # Hazard tint (red)
     overlay[hazard_mask > 0] = _blend_colour(overlay[hazard_mask > 0], (0, 0, 220), 0.55)
 
-    # Cell label + class banner at top
+    # Cell label + class + confidence banner at top
     colour = _COLOURS[hazard_class]
     banner_h = 28
     banner = np.full((banner_h, img.shape[1], 3), colour, dtype=np.uint8)
-    label = f"Cell ({grid_cell[0]},{grid_cell[1]}) — {hazard_class}"
+    label = f"Cell ({grid_cell[0]},{grid_cell[1]}) — {hazard_class} ({confidence:.0%})"
     cv2.putText(banner, label, (6, 19), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     result = np.vstack([banner, overlay])
 
@@ -281,24 +390,32 @@ def _error_result(grid_cell: tuple) -> dict:
         "cost": config.COST_SAFE,
         "grid_cell": grid_cell,
         "hazard_map_path": None,
+        "confidence": 0.0,
         "details": {"error": "could_not_read_image"},
     }
 
 
-def save_cost_grid_json(cost_grid, hazard_grid, image_index=None, change_cells=None):
-    """Save the full cost grid and classifications as JSON for the dashboard.
+def save_cost_grid_json(
+    cost_grid,
+    hazard_grid,
+    image_index=None,
+    change_cells=None,
+    confidence_grid=None,
+):
+    """Save the full cost grid, classifications, and confidences as JSON.
 
     Args:
-        cost_grid:    numpy int array (GRID_ROWS x GRID_COLS)
-        hazard_grid:  list of lists of class strings
-        image_index:  dict from pipeline image_index (optional, for pass_data)
-        change_cells: list of [r,c] cells with changes (optional)
+        cost_grid:       numpy int array (GRID_ROWS x GRID_COLS)
+        hazard_grid:     list of lists of class strings
+        image_index:     dict from pipeline image_index (optional, for pass_data)
+        change_cells:    list of [r,c] cells with changes (optional)
+        confidence_grid: numpy float array (GRID_ROWS x GRID_COLS) or None
     """
     rows, cols = cost_grid.shape
     grid = cost_grid.tolist()
     classifications = [[hazard_grid[r][c] for c in range(cols)] for r in range(rows)]
 
-    # coverage: True if the cell has been surveyed (not default SAFE with cost=1 and no index entry)
+    # coverage: True if the cell has been surveyed
     coverage = [[False] * cols for _ in range(rows)]
     pass_data = [[0] * cols for _ in range(rows)]
 
@@ -319,6 +436,9 @@ def save_cost_grid_json(cost_grid, hazard_grid, image_index=None, change_cells=N
         "pass_data": pass_data,
         "change_cells": change_cells or [],
     }
+
+    if confidence_grid is not None:
+        data["confidences"] = [[round(float(confidence_grid[r][c]), 3) for c in range(cols)] for r in range(rows)]
 
     os.makedirs(config.PROCESSED_DIR, exist_ok=True)
     out_path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")

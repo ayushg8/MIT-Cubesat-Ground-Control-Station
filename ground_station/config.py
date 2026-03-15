@@ -31,6 +31,12 @@ COST_SHADOW = 15
 COST_HAZARD = 20
 COST_IMPASSABLE = 999
 
+# === HAZARD CLASSIFICATION THRESHOLDS ===
+LBP_VARIANCE_HIGH = 500        # LBP variance above this → rocky/hazardous texture
+LBP_VARIANCE_MODERATE = 200    # LBP variance above this → moderate texture
+EDGE_DENSITY_HIGH = 0.15       # Canny edge density above this → rough terrain
+EDGE_DENSITY_MODERATE = 0.08   # Canny edge density above this → moderate terrain
+
 # === CHANGE DETECTION ===
 CHANGE_THRESHOLD = 30              # Pixel difference (0-255) to count as changed
 CHANGE_MIN_AREA_PX = 50            # Min contiguous changed pixels to report as an event

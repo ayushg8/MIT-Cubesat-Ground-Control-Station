@@ -104,13 +104,14 @@ def test_shadow_detector(image_path: str) -> dict | None:
         pct     = result["shadow_percentage"]
         regions = result["shadow_regions"]
         mask    = result["shadow_mask"]
-        otsu    = result["otsu_threshold"]
         mpath   = result.get("shadow_mask_path", "")
 
         _info(f"shadow_percentage = {pct:.1f}%")
         _info(f"regions           = {len(regions)}")
-        _info(f"otsu_threshold    = {otsu}")
         _info(f"mask_path         = {mpath}")
+        shadow_count = len([r for r in regions if r.get("type") == "shadow"])
+        object_count = len([r for r in regions if r.get("type") == "object"])
+        _info(f"shadow regions    = {shadow_count}, object regions = {object_count}")
 
         checks = {
             "percentage in 0–100":       0.0 <= pct <= 100.0,
@@ -148,12 +149,16 @@ def test_hazard_classifier(image_path: str, shadow_result: dict | None) -> dict 
 
         cls      = result["hazard_class"]
         cost     = result["cost"]
+        conf     = result.get("confidence", 0.0)
         map_path = result.get("hazard_map_path", "")
         details  = result.get("details", {})
 
         _info(f"hazard_class          = {cls}")
         _info(f"cost                  = {cost}")
-        _info(f"crater={details.get('has_crater')}  boulder={details.get('has_boulder')}")
+        _info(f"confidence            = {conf:.3f}")
+        _info(f"lbp_variance          = {details.get('lbp_variance', '--')}")
+        _info(f"edge_density          = {details.get('edge_density', '--')}")
+        _info(f"contours              = {details.get('significant_contour_count', '--')}")
         _info(f"hazard_map_path       = {map_path}")
 
         valid_classes = {"SAFE", "MODERATE", "SHADOW", "HAZARD", "IMPASSABLE"}
@@ -165,6 +170,7 @@ def test_hazard_classifier(image_path: str, shadow_result: dict | None) -> dict 
             "cost matches class":           cost in valid_costs,
             "grid_cell echoed correctly":   result["grid_cell"] == grid_cell,
             "hazard_map PNG saved":         bool(map_path) and os.path.exists(map_path),
+            "confidence in 0-1 range":      0.0 <= conf <= 1.0,
         }
 
         all_ok = True

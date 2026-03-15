@@ -64,12 +64,23 @@ def generate_cost_grid():
         [0, 1, 2, 2, 1, 1, 3, 1],
     ]
 
+    # Confidence grid — higher for SAFE, lower for ambiguous
+    conf_map = {
+        "SAFE": lambda: round(random.uniform(0.82, 0.98), 3),
+        "MODERATE": lambda: round(random.uniform(0.60, 0.85), 3),
+        "SHADOW": lambda: round(random.uniform(0.70, 0.92), 3),
+        "HAZARD": lambda: round(random.uniform(0.65, 0.88), 3),
+        "IMPASSABLE": lambda: round(random.uniform(0.80, 0.95), 3),
+    }
+    confidences = [[conf_map[c]() for c in row] for row in classifications]
+
     data = {
         "grid": grid,
         "classifications": classifications,
         "coverage": coverage,
         "pass_data": pass_data,
         "change_cells": [[2, 3], [5, 5]],
+        "confidences": confidences,
     }
 
     with open(os.path.join(PROCESSED, "cost_grid.json"), "w") as f:
@@ -156,6 +167,8 @@ def generate_changes():
                 "type": "darkened",
                 "mean_diff": 67.3,
                 "confidence": 0.89,
+                "ssim_score": 0.847,
+                "persistence": True,
                 "bbox": [120, 80, 45, 38],
                 "before_image": "sample_cell2_3_pass1.jpg",
                 "after_image": "sample_cell2_3_pass3.jpg",
@@ -169,6 +182,8 @@ def generate_changes():
                 "type": "brightened",
                 "mean_diff": 42.1,
                 "confidence": 0.76,
+                "ssim_score": 0.912,
+                "persistence": False,
                 "bbox": [200, 150, 32, 28],
                 "before_image": "sample_cell5_5_pass2.jpg",
                 "after_image": "sample_cell5_5_pass3.jpg",
@@ -231,11 +246,10 @@ def generate_shadow_data():
     """Generate sample shadow detection data."""
     data = {
         "shadow_pct": 18.2,
-        "otsu_threshold": 127,
         "regions": [
-            {"id": 1, "area_px": 450, "centroid": [234.2, 156.8]},
-            {"id": 2, "area_px": 280, "centroid": [89.5, 312.3]},
-            {"id": 3, "area_px": 120, "centroid": [401.0, 78.6]},
+            {"id": 1, "area_px": 450, "width_px": 30, "height_px": 22, "centroid": [234.2, 156.8], "type": "shadow", "mean_boundary_gradient": 12.4},
+            {"id": 2, "area_px": 280, "width_px": 20, "height_px": 18, "centroid": [89.5, 312.3], "type": "shadow", "mean_boundary_gradient": 18.7},
+            {"id": 3, "area_px": 120, "width_px": 15, "height_px": 12, "centroid": [401.0, 78.6], "type": "object", "mean_boundary_gradient": 45.2},
         ],
     }
 

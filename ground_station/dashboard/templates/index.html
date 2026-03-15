@@ -413,7 +413,7 @@ input.active-input { border-color: var(--cyan); }
     <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
     <button id="mc-btn-cell" disabled onclick="mcSetCell(this)">SET</button>
     <div class="tb-div"></div>
-    <button id="mc-btn-discover" class="active-start" onclick="mcDiscover()" style="display:none;">FIND</button>
+    <button id="mc-btn-discover" class="active-start" onclick="mcDiscover()">FIND</button>
     <button id="mc-btn-pi-start" onclick="mcPiStart()" style="display:none;">START SW</button>
     <button id="mc-btn-pi-stop" onclick="mcPiStop()" style="display:none;">STOP SW</button>
     <span id="mc-pi-ip" style="font-family:var(--mono);font-size:10px;color:var(--dim);"></span>
@@ -1722,9 +1722,13 @@ async function pollShadow() {
     const txt = el('shadow-summary-text');
     if (txt) {
       const pct = d.shadow_pct != null ? fmtNum(d.shadow_pct,1) + '%' : '--';
-      const regions = d.regions ? d.regions.length : '--';
-      const largest = d.regions && d.regions.length ? d.regions.reduce((a,b) => a.area_px > b.area_px ? a : b).area_px + ' px' : '--';
-      txt.textContent = `Shadow: ${pct} | ${regions} regions | Largest: ${largest}`;
+      const allRegions = d.regions || [];
+      const shadows = allRegions.filter(r => r.type === 'shadow');
+      const objects = allRegions.filter(r => r.type === 'object');
+      const largest = shadows.length ? shadows.reduce((a,b) => a.area_px > b.area_px ? a : b).area_px + ' px' : '--';
+      let summary = `Shadow: ${pct} | ${shadows.length} shadow region(s) | Largest: ${largest}`;
+      if (objects.length) summary += ` | ${objects.length} dark object(s)`;
+      txt.textContent = summary;
     }
   } catch(e) {}
 }

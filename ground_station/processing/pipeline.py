@@ -66,6 +66,11 @@ class Pipeline:
             ["SAFE"] * config.GRID_COLS for _ in range(config.GRID_ROWS)
         ]
 
+        # confidence_grid: 8×8 float array, one confidence per cell.
+        self._confidence_grid = np.zeros(
+            (config.GRID_ROWS, config.GRID_COLS), dtype=np.float64
+        )
+
         # Latest hazard map path (used as base for route overlay)
         self._latest_hazard_map_path: str | None = None
 
@@ -133,13 +138,14 @@ class Pipeline:
             r, c = grid_cell
             self._cost_grid[r, c] = hazard_result["cost"]
             self._hazard_grid[r][c] = hazard_result["hazard_class"]
+            self._confidence_grid[r, c] = hazard_result.get("confidence", 0.0)
             self._latest_hazard_map_path = hazard_result.get("hazard_map_path")
 
             self._mission_state.record_hazard_result(grid_cell, hazard_result["hazard_class"])
             logger.info(
                 f"Pipeline [{basename}] hazard: "
                 f"cell {grid_cell} → {hazard_result['hazard_class']} "
-                f"(cost={hazard_result['cost']})"
+                f"(cost={hazard_result['cost']}, conf={hazard_result.get('confidence', 0):.2f})"
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] hazard_classifier FAILED: {e}", exc_info=True)
@@ -154,8 +160,12 @@ class Pipeline:
             try:
                 prev_path   = prev_entry["path"]
                 prev_pass   = prev_entry["pass"]
+                # Pass all entries for this cell for persistence checking
+                cell_key = self._cell_key(grid_cell)
+                all_entries = self._image_index.get(cell_key, [])
                 change_result = self._change_detector.detect(
-                    prev_path, image_path, grid_cell, prev_pass, pass_number
+                    prev_path, image_path, grid_cell, prev_pass, pass_number,
+                    all_cell_entries=all_entries,
                 )
                 if change_result and change_result["change_summary"]["total_events"] > 0:
                     has_change = True
@@ -224,6 +234,7 @@ class Pipeline:
                 self._cost_grid, self._hazard_grid,
                 image_index=self._image_index,
                 change_cells=change_cells,
+                confidence_grid=self._confidence_grid,
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] save_cost_grid_json FAILED: {e}", exc_info=True)

@@ -17,12 +17,12 @@ See `docs/ARCHITECTURE.md` for the full ground station software architecture, co
 1. Everything is REAL. Every image comes from the real CubeSat camera. Every telemetry value comes from real sensors. No mock data.
 2. The GCS does NOT pull from the CubeSat. The CubeSat pushes to the GCS. The GCS just listens and reacts.
 3. Ground-side quality checks are DIFFERENT from CubeSat checks. CubeSat checks blur/exposure/motion. Ground checks texture sufficiency, contrast range, color validity — things that affect whether the CV pipeline can work with the image.
-4. Change detection does NOT use ORB feature matching (fails on sand). Uses template matching on grid tape intersections for alignment, then pixel differencing.
+4. Change detection does NOT use ORB feature matching (fails on sand). Uses SIFT feature matching and SSIM for alignment and differencing.
 5. Elevation mapping is NOT performed (photoclinometry subsystem removed by design). Shadow detection still runs for hazard classification.
 6. Mosaic is one image per grid cell (highest quality). Known limitation documented.
 7. Hazard classifier produces one classification per grid cell, not a sub-grid within each image.
 8. `CUBESAT_IP` in config must be filled in with the CubeSat's real IP before running.
-9. `GRID_CELL_SIZE_CM` in config must be measured from the real physical grid tape spacing before demo.
+9. `GRID_CELL_SIZE_CM` in config is the approximate size of each virtual grid cell in cm (estimated from camera height and FOV).
 10. Route planner computes 3 simultaneous routes (Fastest/Safest/Balanced). Use `/api/select_route` to choose, `/api/plan_constrained` for constraint-based planning.
 
 ## Dependencies

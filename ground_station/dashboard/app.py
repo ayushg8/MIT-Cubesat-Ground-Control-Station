@@ -305,6 +305,16 @@ def api_yolo_annotated():
     return ("No YOLO annotated image yet", 204)
 
 
+@app.route("/api/cell_map")
+def api_cell_map():
+    """Return cell identification database summary."""
+    if _pipeline is not None:
+        cell_id = getattr(_pipeline, "_cell_identifier", None)
+        if cell_id is not None:
+            return jsonify(cell_id.get_cell_map())
+    return jsonify({})
+
+
 @app.route("/api/plan_routes", methods=["POST"])
 def api_plan_routes():
     """Body: {start: [row, col], end: [row, col]} → run plan_multiple_routes."""

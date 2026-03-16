@@ -8,8 +8,8 @@ from __future__ import annotations
 # SSIM ignores it. A real terrain change (rock moved, new crater) alters
 # structure and SSIM detects it.
 #
-# Alignment method (unchanged):
-#   Template matching on grid tape intersection for translation-only correction.
+# Alignment method:
+#   Template matching on a corner patch for translation-only correction.
 #   If confidence < 0.7 → flag "alignment_uncertain".
 #
 # Additional filtering:
@@ -32,8 +32,8 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# Template patch: a square cropped from the corner of the image where the grid
-# tape intersection is most likely to appear.
+# Template patch: a square cropped from the corner of the image used as an
+# anchor for translation-only alignment between passes.
 _TEMPLATE_CROP = (10, 10, 80, 80)   # (x, y, w, h) — top-left corner region
 _ALIGN_CONFIDENCE_THRESHOLD = 0.7
 
@@ -223,7 +223,7 @@ def _load_gray(path: str) -> np.ndarray | None:
 
 def _align_via_template(reference: np.ndarray, to_align: np.ndarray) -> tuple:
     """
-    Align to_align onto reference using a small grid tape corner patch as anchor.
+    Align to_align onto reference using a small corner patch as anchor.
     Returns (aligned_image, confidence).
     """
     x, y, tw, th = _TEMPLATE_CROP

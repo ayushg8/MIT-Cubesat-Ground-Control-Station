@@ -235,13 +235,13 @@ Output: hazard_map.png, cost_grid (8×8 numpy), hazard_counts dict.
 
 **[FIX #6]** Does NOT use ORB feature matching for alignment. ORB fails on textureless surfaces like sand — almost no keypoints, bad affine transform, noise in the diff.
 
-**Instead:** Since both images cover the same taped grid cell, and the camera is always at roughly the same height above a fixed surface, the images are already approximately aligned. We skip feature-based registration entirely and use direct comparison:
+**Instead:** Since both images cover the same grid cell, and the camera is at roughly the same height above a fixed surface, the images are already approximately aligned. We use direct comparison with lightweight alignment:
 
 **Method:**
-1. Look up the grid cell for the new image (from metadata `grid_cell` field)
+1. Ground station identifies which cell the new image belongs to using image fingerprinting (SIFT matching + CNN embeddings against known cells)
 2. Find the previous image of the same cell (from image index)
 3. Load both as grayscale, resize to identical dimensions if needed
-4. **Simple alignment via template matching:** Use a small region of the grid tape (visible in both images) as an anchor. `cv2.matchTemplate()` with a cropped tape-intersection patch. This is much more reliable than ORB on sand because tape intersections are high-contrast, distinct features.
+4. **Simple alignment via template matching:** Use a small corner patch as an anchor. `cv2.matchTemplate()` with a cropped region. Surface features (rocks, crater edges) provide sufficient texture for reliable matching.
 5. Apply the detected offset (translation only — no rotation or scale, since the camera height and angle are consistent)
 6. Compute absolute difference: `diff = cv2.absdiff(aligned_img1, aligned_img2)`
 7. Threshold: pixels where diff > `CHANGE_THRESHOLD` (30) → marked as changed
@@ -430,7 +430,7 @@ Dashboard has text input for queries. Flask calls ollama locally, returns respon
 | `mission_state.json` | Mission database (PostgreSQL) | Persistent DB, trend analysis | Same data schema |
 | Local LLM | Fine-tuned mission planning AI | Larger model, mission-specific training | Same architecture: LLM reads data, doesn't decide |
 | Change detection (2-3 passes) | Long-baseline monitoring (months) | Statistical significance testing | Same pixel-diff core approach |
-| Grid tape for alignment | Orbital ephemeris for georeferencing | Precise GPS/star tracker positioning | Same concept: known position → alignment |
+| Image fingerprinting for cell identification | Orbital ephemeris for georeferencing | Precise GPS/star tracker positioning | Same concept: known position → alignment |
 
 ---
 
@@ -440,7 +440,7 @@ Dashboard has text input for queries. Flask calls ollama locally, returns respon
 |----------|--------|----------|
 | Heavy CV on ground | Pi: 2GB RAM, no cooling. Standard satellite arch. | Real memory + thermal limits |
 | Change detection on ground | Needs images from multiple passes. CubeSat only sees one pass. | Real multi-pass dependency |
-| **[FIX #6]** Template matching not ORB | Sand is textureless — ORB finds no keypoints. Grid tape intersections are reliable anchors. | Real surface material properties |
+| **[FIX #6]** Template matching not ORB | Sand is textureless — ORB finds no keypoints. Corner patches with surface features (rocks, edges) are used as anchors. | Real surface material properties |
 | **[FIX #8]** Documented light divergence error | Flashlight ≠ sun. Heights have ±15% error at edges. | Real physics, measured distance |
 | **[FIX #9]** Different ground quality checks | CubeSat checks capture quality. Ground checks pipeline usability. | Different failure modes |
 | **[FIX #12]** One image per mosaic cell | Grid-based, not feature-stitched. Flight would use ephemeris. | Real positioning limitation |

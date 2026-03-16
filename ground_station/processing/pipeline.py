@@ -34,6 +34,7 @@ from processing.mission_state import MissionState
 from processing.mosaic_builder import MosaicBuilder
 from processing.route_planner import RoutePlanner
 from processing.shadow_detector import ShadowDetector
+from processing.cell_identifier import CellIdentifier
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class Pipeline:
         self._mission_state = mission_state
         self._lock = threading.Lock()
 
+        self._cell_identifier    = CellIdentifier()
         self._shadow_detector    = ShadowDetector()
         self._hazard_classifier  = HazardClassifier()
         self._yolo_detector      = YOLODetector()
@@ -105,18 +107,34 @@ class Pipeline:
     def _process_locked(self, image_path: str, metadata: dict, ground_quality: dict):
         basename = os.path.basename(image_path)
 
-        # Extract grid cell from metadata
-        raw_cell = metadata.get("grid_cell", [0, 0])
+        # ── Cell identification (ground-side, image-based) ──
+        # The ground station determines which cell the image belongs to
+        # using SIFT + CNN + Delaunay fingerprinting — no CubeSat metadata needed.
         try:
-            grid_cell = (int(raw_cell[0]), int(raw_cell[1]))
-        except (TypeError, IndexError, ValueError):
-            logger.error(f"Pipeline: bad grid_cell in metadata for '{basename}': {raw_cell}")
+            cell_result = self._cell_identifier.identify(image_path)
+            grid_cell = cell_result["cell"]
+            pass_number = cell_result["pass_number"]
+            is_revisit = cell_result["is_revisit"]
+            cell_method = cell_result["method"]
+            cell_confidence = cell_result["confidence"]
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] cell identification FAILED: {e}", exc_info=True)
             grid_cell = (0, 0)
+            pass_number = 1
+            is_revisit = False
+            cell_method = "error"
+            cell_confidence = 0.0
 
-        pass_number = int(metadata.get("pass_number", 0))
-        quality_score = float(metadata.get("combined_score", 0.5))
+        quality_score = float(
+            metadata.get("combined_score")
+            or metadata.get("cubesat_quality_score")
+            or 0.5
+        )
 
-        logger.info(f"Pipeline: starting for '{basename}' cell={grid_cell} pass={pass_number}")
+        logger.info(
+            f"Pipeline: starting for '{basename}' cell={grid_cell} pass={pass_number} "
+            f"({'REVISIT' if is_revisit else 'NEW'} via {cell_method}, conf={cell_confidence:.2f})"
+        )
 
         # ── Record in mission state ──
         self._mission_state.record_image_received(basename, metadata, ground_quality)
@@ -137,7 +155,6 @@ class Pipeline:
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] shadow_detector FAILED: {e}", exc_info=True)
-            self._mission_state.record_image_received(basename, metadata, ground_quality)
 
         # ── 2. Hazard classification ──
         try:

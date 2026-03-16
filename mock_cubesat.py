@@ -72,9 +72,9 @@ def _generate_sand_image(cell_row: int, cell_col: int, pass_n: int) -> bytes:
     noise = np.random.randint(-25, 25, base.shape, dtype=np.int16)
     img = np.clip(base.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
-    # Grid tape lines (the real surface has tape at cell boundaries)
-    cv2.line(img, (0, 120), (320, 120), (60, 60, 60), 2)
-    cv2.line(img, (160, 0), (160, 240), (60, 60, 60), 2)
+    # Surface texture lines (cracks/ridges)
+    cv2.line(img, (0, 120), (320, 120), (160, 150, 130), 1)
+    cv2.line(img, (160, 0), (160, 240), (160, 150, 130), 1)
 
     # Add some random features to make each cell unique
     n_features = random.randint(0, 4)

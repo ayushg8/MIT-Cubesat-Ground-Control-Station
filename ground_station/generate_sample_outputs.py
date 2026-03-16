@@ -220,9 +220,9 @@ def _generate_sample_change_images():
         base = np.full((240, 320, 3), (180, 170, 140), dtype=np.uint8)
         noise = np.random.randint(-20, 20, base.shape, dtype=np.int16)
         img = np.clip(base.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-        # Grid tape lines
-        cv2.line(img, (0, 120), (320, 120), (60, 60, 60), 2)
-        cv2.line(img, (160, 0), (160, 240), (60, 60, 60), 2)
+        # Surface texture lines (cracks/ridges)
+        cv2.line(img, (0, 120), (320, 120), (160, 150, 130), 1)
+        cv2.line(img, (160, 0), (160, 240), (160, 150, 130), 1)
         return img
 
     # Cell (2,3): before = plain sand, after = darkened region
@@ -447,9 +447,9 @@ def _generate_sample_yolo_image(detections_per_cell):
     noise = np.random.randint(-15, 15, base.shape, dtype=np.int16)
     img = np.clip(base.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
-    # Grid tape
-    cv2.line(img, (0, 120), (320, 120), (60, 60, 60), 2)
-    cv2.line(img, (160, 0), (160, 240), (60, 60, 60), 2)
+    # Surface texture lines
+    cv2.line(img, (0, 120), (320, 120), (160, 150, 130), 1)
+    cv2.line(img, (160, 0), (160, 240), (160, 150, 130), 1)
 
     # Draw detections from cell (2,3) as example
     colors = {"crater": (0, 0, 255), "boulder": (0, 165, 255)}

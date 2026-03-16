@@ -40,7 +40,7 @@ class MissionState:
             if pass_number > self._state["total_passes"]:
                 self._state["total_passes"] = pass_number
 
-            cubesat_score = metadata.get("combined_score")
+            cubesat_score = metadata.get("combined_score") or metadata.get("cubesat_quality_score")
             if cubesat_score is not None:
                 scores = self._state["_cubesat_scores"]
                 scores.append(float(cubesat_score))
@@ -220,6 +220,10 @@ class MissionState:
                 if key in saved:
                     self._state[key] = saved[key]
             # Rebuild internal set from coverage data
+            # Reconstruct _cells_covered from hazard counts and coverage info
+            # (Best effort — cells_filled count is preserved even if exact set isn't)
+            if self._state["coverage"]["cells_filled"] > 0 and not self._state["_cells_covered"]:
+                self._state["_cells_covered"] = set()
             logger.info("MissionState: resumed from existing mission_state.json")
         except Exception as e:
             logger.warning(f"MissionState: could not load mission_state.json: {e} — starting fresh")

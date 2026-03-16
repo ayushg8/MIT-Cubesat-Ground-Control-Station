@@ -107,15 +107,21 @@ def download_lunar_model(api_key: str) -> bool:
             )
 
             # Copy best weights to lunar_detector.pt
-            best_weights = os.path.join(MODEL_DIR, "training", "lunar_crater_boulder", "weights", "best.pt")
-            if os.path.exists(best_weights):
-                import shutil
-                shutil.copy2(best_weights, LUNAR_MODEL_PATH)
-                print(f"\nLunar model saved to: {LUNAR_MODEL_PATH}")
-                return True
-            else:
-                print("Training completed but best.pt not found")
-                return False
+            # Ultralytics may save weights in different locations depending on version
+            import shutil
+            import glob
+            best_weights_candidates = [
+                os.path.join(MODEL_DIR, "training", "lunar_crater_boulder", "weights", "best.pt"),
+            ] + glob.glob(os.path.join("**", "lunar_crater_boulder", "weights", "best.pt"), recursive=True)
+
+            for best_weights in best_weights_candidates:
+                if os.path.exists(best_weights):
+                    shutil.copy2(best_weights, LUNAR_MODEL_PATH)
+                    print(f"\nLunar model saved to: {LUNAR_MODEL_PATH}")
+                    return True
+
+            print("Training completed but best.pt not found at any expected location")
+            return False
 
         except Exception as e:
             print(f"  Failed: {e}")

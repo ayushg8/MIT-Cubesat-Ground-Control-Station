@@ -19,11 +19,12 @@ See `docs/ARCHITECTURE.md` for the full ground station software architecture, co
 3. Ground-side quality checks are DIFFERENT from CubeSat checks. CubeSat checks blur/exposure/motion. Ground checks texture sufficiency, contrast range, color validity — things that affect whether the CV pipeline can work with the image.
 4. Change detection does NOT use ORB feature matching (fails on sand). Uses SIFT feature matching and SSIM for alignment and differencing.
 5. Elevation mapping is NOT performed (photoclinometry subsystem removed by design). Shadow detection still runs for hazard classification.
-6. Mosaic is one image per grid cell (highest quality). Known limitation documented.
-7. Hazard classifier produces one classification per grid cell, not a sub-grid within each image.
+6. Mosaic uses continuous stitching (SIFT + homography). Images are placed into a growing canvas. No fixed grid — grid is derived dynamically from mosaic dimensions.
+7. Hazard classifier produces one classification per image, projected onto the dynamic mosaic grid cells the image covers.
 8. `CUBESAT_IP` in config must be filled in with the CubeSat's real IP before running.
-9. `GRID_CELL_SIZE_CM` in config is the approximate size of each virtual grid cell in cm (estimated from camera height and FOV).
-10. Route planner computes 3 simultaneous routes (Fastest/Safest/Balanced). Use `/api/select_route` to choose, `/api/plan_constrained` for constraint-based planning.
+9. `MOSAIC_GRID_CELL_PX` in config controls the dynamic grid resolution (pixels per cell). `GRID_CELL_SIZE_CM` is for physical calibration.
+10. Route planner computes 3 simultaneous routes (Fastest/Safest/Balanced). Use `/api/select_route` to choose, `/api/plan_constrained` for constraint-based planning. Landing/Target points are set by clicking on the mosaic viewer.
+11. IMU data (yaw) from the CubeSat is used as a placement hint for mosaic stitching when available. Falls back to pure SIFT matching if absent.
 
 ## Dependencies
 ```bash

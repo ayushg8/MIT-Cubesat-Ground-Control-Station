@@ -79,6 +79,28 @@ NACK = b'\x15'  # ASCII NAK — GCS sends this if MD5 mismatch or decode failure
 #   {"cmd": "reset_mission"}
 #       → Reset pass counter, clear coverage/queue/image index, start fresh
 
+# === IMU METADATA (optional) ===
+#
+# When the CubeSat has IMU integration enabled, the metadata dict in the
+# image transfer header may include an "imu" sub-object:
+#
+#   "metadata": {
+#       ...,
+#       "imu": {
+#           "roll_deg":  float,           # Roll angle in degrees
+#           "pitch_deg": float,           # Pitch angle in degrees
+#           "yaw_deg":   float,           # Yaw angle in degrees (heading)
+#           "angular_velocity": [rx, ry, rz]  # deg/s, body frame
+#       }
+#   }
+#
+# The GCS mosaic stitcher uses yaw_deg as a placement hint (initial rotation
+# estimate before SIFT matching). angular_velocity between consecutive images
+# can estimate translation direction.
+#
+# If "imu" is absent, the stitcher falls back to pure SIFT feature matching.
+# CubeSat-side changes to populate these fields will be implemented separately.
+
 # === FILE NAMING CONVENTION ===
 #
 # Image:    pass{N}_img{MM}_{YYYYMMDD_HHMMSS}.jpg

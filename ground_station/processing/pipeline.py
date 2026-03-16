@@ -5,22 +5,23 @@ from __future__ import annotations
 # Runs each stage in order. If any stage raises, that stage is skipped for this
 # image; the pipeline continues with the remaining stages and with future images.
 #
-# Dual-detection architecture:
-#   1. Classical CV (shadow, hazard, change, mosaic, route) — grid-level
-#   2. YOLOv8 ML detection — object-level bounding boxes for craters/boulders
-#   3. Fusion — combines both for higher confidence classification
+# Architecture: Continuous Mosaic
+#   Images are stitched into a growing mosaic canvas. A dynamic grid is derived
+#   from the mosaic. Hazard classification, change detection, and route planning
+#   all operate on this dynamic grid.
 #
 # Stage order:
-#   1. ShadowDetector
-#   2. HazardClassifier
-#   2b. YOLODetector + Fusion (ML object detection + CV/ML agreement)
-#   3. ChangeDetector  (only if same cell was imaged in a prior pass)
-#   4. MosaicBuilder   (only if 3+ cells now covered)
-#   5. RoutePlanner
-#   6. MissionState.save()
+#   1. MosaicStitcher.register_image()   — place image in mosaic
+#   2. MosaicGrid.update_from_mosaic()   — resize grid to match canvas
+#   3. ShadowDetector
+#   4. HazardClassifier → MosaicGrid.apply_hazard()
+#   4b. YOLODetector + Fusion
+#   5. ChangeDetector (if overlapping prior images exist)
+#   6. RoutePlanner (if start/end are set)
+#   7. Save cost_grid.json, mission state
 #
-# The image index (which cell was imaged in which pass, with which image path)
-# is persisted to data/processed/image_index.json so it survives restarts.
+# The image index (keyed by filename) is persisted to
+# data/processed/image_index.json so it survives restarts.
 
 import json
 import logging
@@ -31,10 +32,10 @@ import config
 from processing.change_detector import ChangeDetector
 from processing.hazard_classifier import HazardClassifier, save_cost_grid_json
 from processing.mission_state import MissionState
-from processing.mosaic_builder import MosaicBuilder
+from processing.mosaic_stitcher import MosaicStitcher
+from processing.mosaic_grid import MosaicGrid
 from processing.route_planner import RoutePlanner
 from processing.shadow_detector import ShadowDetector
-from processing.cell_identifier import CellIdentifier
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 
 logger = logging.getLogger(__name__)
@@ -45,51 +46,41 @@ _IMAGE_INDEX_FILE = os.path.join(config.PROCESSED_DIR, "image_index.json")
 class Pipeline:
     """
     Stateful pipeline. Holds one instance of each CV module and the shared
-    image index + cost grid. Designed to run in a single background thread
+    mosaic stitcher + dynamic grid. Designed to run in a single background thread
     (the listener spawns a thread per connection; pipeline calls are serialised
-    by the _lock so the cost_grid and image index stay consistent).
+    by the _lock so the grids and mosaic stay consistent).
     """
 
     def __init__(self, mission_state: MissionState):
         self._mission_state = mission_state
         self._lock = threading.Lock()
 
-        self._cell_identifier    = CellIdentifier()
+        self._stitcher           = MosaicStitcher()
+        self._mosaic_grid        = MosaicGrid()
         self._shadow_detector    = ShadowDetector()
         self._hazard_classifier  = HazardClassifier()
         self._yolo_detector      = YOLODetector()
         self._change_detector    = ChangeDetector()
-        self._mosaic_builder     = MosaicBuilder()
         self._route_planner      = RoutePlanner()
 
         # YOLO detection state (accumulated across images)
-        self._yolo_detections: dict = {}   # {"R,C": [detection_dicts]}
+        self._yolo_detections: dict = {}   # {"filename": [detection_dicts]}
         self._fused_results: list = []     # [fused_classification_dicts]
-
-        # cost_grid: 8×8 numpy int array, one cost per cell.
-        # Starts at COST_SAFE for unvisited cells.
-        import numpy as np
-        self._cost_grid = np.full(
-            (config.GRID_ROWS, config.GRID_COLS),
-            config.COST_SAFE,
-            dtype=np.int32
-        )
-
-        # hazard_grid: parallel 8×8 list of class strings for route colouring.
-        self._hazard_grid = [
-            ["SAFE"] * config.GRID_COLS for _ in range(config.GRID_ROWS)
-        ]
-
-        # confidence_grid: 8×8 float array, one confidence per cell.
-        self._confidence_grid = np.zeros(
-            (config.GRID_ROWS, config.GRID_COLS), dtype=np.float64
-        )
 
         # Latest hazard map path (used as base for route overlay)
         self._latest_hazard_map_path: str | None = None
 
-        # image_index: { "R,C": [{"pass": int, "path": str, "score": float}, ...] }
+        # image_index: { "filename": [{"pass": int, "path": str, "score": float, "mosaic_bbox": [...]}, ...] }
         self._image_index: dict = self._load_image_index()
+
+        # Route endpoints — set from dashboard clicks (mosaic pixel coords)
+        self._route_start_mosaic: list | None = None
+        self._route_end_mosaic: list | None = None
+
+        # Initialize grid from existing mosaic canvas
+        cw, ch = self._stitcher.get_canvas_size()
+        if cw > 0 and ch > 0:
+            self._mosaic_grid.update_from_mosaic(cw, ch)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public entry point
@@ -107,43 +98,49 @@ class Pipeline:
     def _process_locked(self, image_path: str, metadata: dict, ground_quality: dict):
         basename = os.path.basename(image_path)
 
-        # ── Cell identification (ground-side, image-based) ──
-        # The ground station determines which cell the image belongs to
-        # using SIFT + CNN + Delaunay fingerprinting — no CubeSat metadata needed.
-        try:
-            cell_result = self._cell_identifier.identify(image_path)
-            grid_cell = cell_result["cell"]
-            pass_number = cell_result["pass_number"]
-            is_revisit = cell_result["is_revisit"]
-            cell_method = cell_result["method"]
-            cell_confidence = cell_result["confidence"]
-        except Exception as e:
-            logger.error(f"Pipeline [{basename}] cell identification FAILED: {e}", exc_info=True)
-            grid_cell = (0, 0)
-            pass_number = 1
-            is_revisit = False
-            cell_method = "error"
-            cell_confidence = 0.0
-
         quality_score = float(
             metadata.get("combined_score")
             or metadata.get("cubesat_quality_score")
             or 0.5
         )
 
-        logger.info(
-            f"Pipeline: starting for '{basename}' cell={grid_cell} pass={pass_number} "
-            f"({'REVISIT' if is_revisit else 'NEW'} via {cell_method}, conf={cell_confidence:.2f})"
-        )
+        logger.info(f"Pipeline: starting for '{basename}'")
 
         # ── Record in mission state ──
         self._mission_state.record_image_received(basename, metadata, ground_quality)
 
-        shadow_result    = None
-        hazard_result    = None
-        change_result    = None
+        mosaic_result   = None
+        shadow_result   = None
+        hazard_result   = None
+        change_result   = None
+        mosaic_bbox     = (0, 0, 0, 0)
 
-        # ── 1. Shadow detection ──
+        # ── 1. Register image in mosaic ──
+        try:
+            mosaic_result = self._stitcher.register_image(image_path, metadata)
+            mosaic_bbox = mosaic_result["mosaic_bbox"]
+            logger.info(
+                f"Pipeline [{basename}] mosaic: placed via {mosaic_result['method']} "
+                f"bbox={mosaic_bbox} images={mosaic_result['image_count']}"
+            )
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] mosaic_stitcher FAILED: {e}", exc_info=True)
+
+        # ── 2. Update dynamic grid from mosaic ──
+        try:
+            cw, ch = self._stitcher.get_canvas_size()
+            if cw > 0 and ch > 0:
+                self._mosaic_grid.update_from_mosaic(cw, ch)
+
+            # Update mission state with dynamic coverage
+            self._mission_state.record_mosaic_update(
+                self._mosaic_grid.get_cells_surveyed(),
+                self._mosaic_grid.get_cells_total(),
+            )
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] mosaic_grid update FAILED: {e}", exc_info=True)
+
+        # ── 3. Shadow detection ──
         try:
             shadow_result = self._shadow_detector.run(image_path)
             if shadow_result is None:
@@ -156,18 +153,24 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] shadow_detector FAILED: {e}", exc_info=True)
 
-        # ── 2. Hazard classification ──
+        # ── 4. Hazard classification ──
+        # Derive a grid_cell from mosaic_bbox center for labeling
+        grid_cell = self._mosaic_grid.mosaic_px_to_grid(
+            mosaic_bbox[0] + mosaic_bbox[2] / 2,
+            mosaic_bbox[1] + mosaic_bbox[3] / 2,
+        )
+
         try:
             shadow_mask = shadow_result["shadow_mask"] if shadow_result else None
             shadow_pct  = shadow_result["shadow_percentage"] if shadow_result else 0.0
 
             hazard_result = self._hazard_classifier.classify(
-                image_path, shadow_mask, shadow_pct, grid_cell
+                image_path, shadow_mask, shadow_pct,
+                grid_cell=grid_cell, mosaic_bbox=mosaic_bbox,
             )
-            r, c = grid_cell
-            self._cost_grid[r, c] = hazard_result["cost"]
-            self._hazard_grid[r][c] = hazard_result["hazard_class"]
-            self._confidence_grid[r, c] = hazard_result.get("confidence", 0.0)
+
+            # Apply hazard to dynamic grid
+            self._mosaic_grid.apply_hazard(mosaic_bbox, hazard_result)
             self._latest_hazard_map_path = hazard_result.get("hazard_map_path")
 
             self._mission_state.record_hazard_result(grid_cell, hazard_result["hazard_class"])
@@ -179,7 +182,7 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] hazard_classifier FAILED: {e}", exc_info=True)
 
-        # ── 2b. YOLO ML detection + Fusion ──
+        # ── 4b. YOLO ML detection + Fusion ──
         try:
             yolo_dets = self._yolo_detector.detect(image_path)
 
@@ -190,9 +193,8 @@ class Pipeline:
             if yolo_dets:
                 self._yolo_detector.detect_and_annotate(image_path, annotated_path)
 
-            # Store per-cell detections
-            cell_key = self._cell_key(grid_cell)
-            self._yolo_detections[cell_key] = yolo_dets
+            # Store per-image detections (keyed by filename)
+            self._yolo_detections[basename] = yolo_dets
 
             # Fuse with classical classification
             classical_class = hazard_result["hazard_class"] if hazard_result else "SAFE"
@@ -200,24 +202,26 @@ class Pipeline:
 
             fused = fuse_classifications(grid_cell, classical_class, classical_conf, yolo_dets)
 
-            # Update fused results (replace existing for this cell)
+            # Update fused results
             self._fused_results = [
                 f for f in self._fused_results if f["cell"] != list(grid_cell)
             ]
             self._fused_results.append(fused)
 
-            # Apply fused classification back to grids if it changed
+            # Apply fused classification back to grid if it changed
             if fused["fused_classification"] != classical_class:
-                r, c = grid_cell
                 fused_class = fused["fused_classification"]
                 cost_map = {
                     "SAFE": config.COST_SAFE, "MODERATE": config.COST_MODERATE,
                     "SHADOW": config.COST_SHADOW, "HAZARD": config.COST_HAZARD,
                     "IMPASSABLE": config.COST_IMPASSABLE,
                 }
-                self._cost_grid[r, c] = cost_map.get(fused_class, config.COST_SAFE)
-                self._hazard_grid[r][c] = fused_class
-                self._confidence_grid[r, c] = fused["fused_confidence"]
+                fused_result = {
+                    "hazard_class": fused_class,
+                    "cost": cost_map.get(fused_class, config.COST_SAFE),
+                    "confidence": fused["fused_confidence"],
+                }
+                self._mosaic_grid.apply_hazard(mosaic_bbox, fused_result)
                 logger.info(
                     f"Pipeline [{basename}] fusion: {classical_class} → {fused_class} "
                     f"(conf {classical_conf:.2f} → {fused['fused_confidence']:.2f})"
@@ -243,19 +247,18 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] yolo_detector FAILED: {e}", exc_info=True)
 
-        # ── Update image index (for change detection) ──
-        prev_entry = self._get_prev_entry(grid_cell, pass_number)
-        self._record_in_index(grid_cell, pass_number, image_path, quality_score)
+        # ── Update image index ──
+        pass_number = metadata.get("pass_number", 1)
+        prev_entry = self._get_prev_entry(basename, pass_number)
+        self._record_in_index(basename, pass_number, image_path, quality_score, mosaic_bbox)
 
-        # ── 3. Change detection ──
+        # ── 5. Change detection ──
         has_change = False
         if prev_entry is not None:
             try:
-                prev_path   = prev_entry["path"]
-                prev_pass   = prev_entry["pass"]
-                # Pass all entries for this cell for persistence checking
-                cell_key = self._cell_key(grid_cell)
-                all_entries = self._image_index.get(cell_key, [])
+                prev_path = prev_entry["path"]
+                prev_pass = prev_entry["pass"]
+                all_entries = self._image_index.get(basename, [])
                 change_result = self._change_detector.detect(
                     prev_path, image_path, grid_cell, prev_pass, pass_number,
                     all_cell_entries=all_entries,
@@ -268,71 +271,96 @@ class Pipeline:
                     )
                     logger.info(
                         f"Pipeline [{basename}] change: "
-                        f"{change_result['change_summary']['total_events']} event(s) in cell {grid_cell}"
+                        f"{change_result['change_summary']['total_events']} event(s)"
                     )
                 else:
-                    logger.info(f"Pipeline [{basename}] change: no significant changes in cell {grid_cell}")
+                    logger.info(f"Pipeline [{basename}] change: no significant changes")
             except Exception as e:
                 logger.error(f"Pipeline [{basename}] change_detector FAILED: {e}", exc_info=True)
         else:
-            logger.debug(f"Pipeline [{basename}] change: no prior image for cell {grid_cell} — skipped")
+            # Also check for overlapping entries from different filenames
+            overlapping = self._stitcher.get_overlapping_entries(mosaic_bbox)
+            prior_overlaps = [
+                e for e in overlapping
+                if e.filename != basename
+            ]
+            if prior_overlaps:
+                try:
+                    prev = prior_overlaps[-1]  # most recent overlapping entry
+                    change_result = self._change_detector.detect(
+                        prev.image_path, image_path, grid_cell, 0, pass_number,
+                    )
+                    if change_result and change_result["change_summary"]["total_events"] > 0:
+                        has_change = True
+                        self._mission_state.record_change_result(
+                            change_result["change_summary"],
+                            change_result["change_events"],
+                        )
+                        logger.info(
+                            f"Pipeline [{basename}] change (overlap): "
+                            f"{change_result['change_summary']['total_events']} event(s)"
+                        )
+                except Exception as e:
+                    logger.error(f"Pipeline [{basename}] change_detector (overlap) FAILED: {e}", exc_info=True)
 
-        # ── 4. Mosaic ──  (was 5 — elevation removed)
-        try:
-            mosaic_result = self._mosaic_builder.update(
-                image_path, grid_cell, quality_score, has_change=has_change
-            )
-            if mosaic_result:
-                logger.info(
-                    f"Pipeline [{basename}] mosaic: "
-                    f"{mosaic_result['cells_filled']}/{mosaic_result['cells_total']} cells "
-                    f"({mosaic_result['coverage_pct']}%)"
+        # ── 6. Route planning ──
+        if self._route_start_mosaic is not None and self._route_end_mosaic is not None:
+            try:
+                cost_grid = self._mosaic_grid.get_cost_grid()
+                hazard_grid = self._mosaic_grid.get_hazard_grid()
+
+                start = self._mosaic_grid.mosaic_px_to_grid(
+                    self._route_start_mosaic[0], self._route_start_mosaic[1]
                 )
-        except Exception as e:
-            logger.error(f"Pipeline [{basename}] mosaic_builder FAILED: {e}", exc_info=True)
+                end = self._mosaic_grid.mosaic_px_to_grid(
+                    self._route_end_mosaic[0], self._route_end_mosaic[1]
+                )
 
-        # ── 5. Route planning ──
-        try:
-            routes = self._route_planner.plan_multiple_routes(
-                self._cost_grid,
-                self._hazard_grid,
-                config.ROUTE_START,
-                config.ROUTE_END,
-                hazard_map_path=self._latest_hazard_map_path,
-            )
-            self._mission_state.record_route_comparison(routes)
-            fastest = routes.get("fastest", {})
-            self._mission_state.record_route_result({
-                "path":               fastest.get("path", []),
-                "path_length":        fastest.get("path_length_cells", 0),
-                "total_cost":         fastest.get("total_cost", 0.0),
-                "shadow_exposure_pct": fastest.get("max_shadow_exposure_pct", 0.0),
-                "status":             fastest.get("status", "unknown"),
-            })
-            logger.info(
-                f"Pipeline [{basename}] routes: "
-                f"fastest={fastest.get('status')} "
-                f"length={fastest.get('path_length_cells')} "
-                f"cost={fastest.get('total_cost')}"
-            )
-        except Exception as e:
-            logger.error(f"Pipeline [{basename}] route_planner FAILED: {e}", exc_info=True)
+                routes = self._route_planner.plan_multiple_routes(
+                    cost_grid, hazard_grid, start, end,
+                    hazard_map_path=self._latest_hazard_map_path,
+                )
+                self._mission_state.record_route_comparison(routes)
+                fastest = routes.get("fastest", {})
+                self._mission_state.record_route_result({
+                    "path":               fastest.get("path", []),
+                    "path_length":        fastest.get("path_length_cells", 0),
+                    "total_cost":         fastest.get("total_cost", 0.0),
+                    "shadow_exposure_pct": fastest.get("max_shadow_exposure_pct", 0.0),
+                    "status":             fastest.get("status", "unknown"),
+                })
+                logger.info(
+                    f"Pipeline [{basename}] routes: "
+                    f"fastest={fastest.get('status')} "
+                    f"length={fastest.get('path_length_cells')} "
+                    f"cost={fastest.get('total_cost')}"
+                )
+            except Exception as e:
+                logger.error(f"Pipeline [{basename}] route_planner FAILED: {e}", exc_info=True)
+        else:
+            logger.debug(f"Pipeline [{basename}] routes: start/end not set — skipped")
 
-        # ── 6. Save cost_grid.json ──
+        # ── 7. Save cost_grid.json ──
         try:
+            cost_grid = self._mosaic_grid.get_cost_grid()
+            hazard_grid = self._mosaic_grid.get_hazard_grid()
+            confidence_grid = self._mosaic_grid.get_confidence_grid()
+            surveyed = self._mosaic_grid.get_surveyed_mask()
+
             change_cells = []
             if change_result and change_result["change_summary"]["total_events"] > 0:
                 change_cells = [list(grid_cell)]
+
             save_cost_grid_json(
-                self._cost_grid, self._hazard_grid,
+                cost_grid, hazard_grid,
                 image_index=self._image_index,
                 change_cells=change_cells,
-                confidence_grid=self._confidence_grid,
+                confidence_grid=confidence_grid,
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] save_cost_grid_json FAILED: {e}", exc_info=True)
 
-        # ── 7. Persist mission state ──
+        # ── 8. Persist mission state ──
         try:
             self._mission_state.save()
         except Exception as e:
@@ -344,31 +372,27 @@ class Pipeline:
     # Image index helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _cell_key(self, grid_cell: tuple) -> str:
-        return f"{grid_cell[0]},{grid_cell[1]}"
-
-    def _get_prev_entry(self, grid_cell: tuple, current_pass: int) -> dict | None:
+    def _get_prev_entry(self, filename: str, current_pass: int) -> dict | None:
         """
-        Find the most recent entry for grid_cell from a DIFFERENT (earlier) pass.
-        Returns {"pass": int, "path": str, "score": float} or None.
+        Find the most recent entry for the same filename from a different (earlier) pass.
         """
-        key = self._cell_key(grid_cell)
-        entries = self._image_index.get(key, [])
+        entries = self._image_index.get(filename, [])
         prior = [e for e in entries if e["pass"] < current_pass]
         if not prior:
             return None
-        # Most recent prior pass
         return max(prior, key=lambda e: e["pass"])
 
-    def _record_in_index(self, grid_cell: tuple, pass_number: int, image_path: str, score: float):
-        key = self._cell_key(grid_cell)
-        if key not in self._image_index:
-            self._image_index[key] = []
-        # Avoid duplicate entries (same pass + path)
-        for existing in self._image_index[key]:
+    def _record_in_index(self, filename: str, pass_number: int, image_path: str,
+                         score: float, mosaic_bbox: tuple):
+        if filename not in self._image_index:
+            self._image_index[filename] = []
+        for existing in self._image_index[filename]:
             if existing["pass"] == pass_number and existing["path"] == image_path:
                 return
-        self._image_index[key].append({"pass": pass_number, "path": image_path, "score": score})
+        self._image_index[filename].append({
+            "pass": pass_number, "path": image_path, "score": score,
+            "mosaic_bbox": list(mosaic_bbox),
+        })
         self._save_image_index()
 
     def _save_image_index(self):
@@ -385,11 +409,25 @@ class Pipeline:
         try:
             with open(_IMAGE_INDEX_FILE) as f:
                 idx = json.load(f)
-            logger.info(f"Pipeline: loaded image index ({len(idx)} cells)")
+            logger.info(f"Pipeline: loaded image index ({len(idx)} entries)")
             return idx
         except Exception as e:
             logger.warning(f"Pipeline: could not load image_index.json: {e} — starting fresh")
             return {}
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Route endpoint setters (called from dashboard)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def set_route_endpoints_mosaic(self, start_mosaic: list, end_mosaic: list):
+        """Set route start/end in mosaic pixel coordinates."""
+        with self._lock:
+            self._route_start_mosaic = start_mosaic
+            self._route_end_mosaic = end_mosaic
+
+    def get_route_endpoints_mosaic(self) -> tuple:
+        """Return (start_mosaic, end_mosaic) or (None, None)."""
+        return (self._route_start_mosaic, self._route_end_mosaic)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Accessors for dashboard
@@ -398,14 +436,45 @@ class Pipeline:
     def get_cost_grid(self):
         """Return a copy of the current cost_grid numpy array."""
         with self._lock:
-            return self._cost_grid.copy()
+            return self._mosaic_grid.get_cost_grid()
 
     def get_hazard_grid(self):
         """Return a copy of the hazard class string grid."""
         with self._lock:
-            return [row[:] for row in self._hazard_grid]
+            return self._mosaic_grid.get_hazard_grid()
+
+    def get_confidence_grid(self):
+        """Return a copy of the confidence grid."""
+        with self._lock:
+            return self._mosaic_grid.get_confidence_grid()
 
     def get_latest_hazard_map_path(self) -> str | None:
         """Return path to the most recent hazard map image."""
         with self._lock:
             return self._latest_hazard_map_path
+
+    def get_mosaic_info(self) -> dict:
+        """Return mosaic metadata for the dashboard."""
+        with self._lock:
+            cw, ch = self._stitcher.get_canvas_size()
+            entries = self._stitcher.get_entries()
+            grid = self._mosaic_grid
+            return {
+                "width": cw,
+                "height": ch,
+                "image_count": len(entries),
+                "entries": [
+                    {
+                        "filename": e.filename,
+                        "bbox": list(e.bbox),
+                    }
+                    for e in entries
+                ],
+                "grid": {
+                    "rows": grid.rows,
+                    "cols": grid.cols,
+                    "cell_size_px": config.MOSAIC_GRID_CELL_PX,
+                    "origin_x": self._stitcher._origin_x,
+                    "origin_y": self._stitcher._origin_y,
+                },
+            }

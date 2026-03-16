@@ -209,6 +209,116 @@ class ChangeDetector:
         }
 
 
+    def detect_mosaic(self, prev_entry, new_entry, stitcher) -> dict | None:
+        """
+        Compare two images that overlap in the mosaic using their homographies
+        for alignment instead of template matching.
+
+        Args:
+            prev_entry: MosaicEntry for the earlier image
+            new_entry:  MosaicEntry for the later image
+            stitcher:   MosaicStitcher instance (for canvas access)
+
+        Returns dict with change_events, change_summary, or None.
+        """
+        prev_gray = _load_gray(prev_entry.image_path)
+        new_gray = _load_gray(new_entry.image_path)
+        if prev_gray is None or new_gray is None:
+            return None
+
+        # Compute the overlapping region in mosaic space
+        px, py, pw, ph = prev_entry.bbox
+        nx, ny, nw, nh = new_entry.bbox
+
+        ox_min = max(px, nx)
+        oy_min = max(py, ny)
+        ox_max = min(px + pw, nx + nw)
+        oy_max = min(py + ph, ny + nh)
+
+        if ox_max <= ox_min or oy_max <= oy_min:
+            return None  # No overlap
+
+        ow = ox_max - ox_min
+        oh = oy_max - oy_min
+
+        if ow < 20 or oh < 20:
+            return None  # Overlap too small
+
+        # Warp both images to the overlap region in mosaic space
+        import numpy as np
+
+        # Translate so overlap region starts at (0,0)
+        T = np.eye(3, dtype=np.float64)
+        T[0, 2] = -ox_min
+        T[1, 2] = -oy_min
+
+        H_prev = T @ prev_entry.homography
+        H_new = T @ new_entry.homography
+
+        prev_img = cv2.imread(prev_entry.image_path)
+        new_img = cv2.imread(new_entry.image_path)
+        if prev_img is None or new_img is None:
+            return None
+
+        prev_warped = cv2.warpPerspective(prev_img, H_prev, (ow, oh))
+        new_warped = cv2.warpPerspective(new_img, H_new, (ow, oh))
+
+        prev_warped_gray = cv2.cvtColor(prev_warped, cv2.COLOR_BGR2GRAY)
+        new_warped_gray = cv2.cvtColor(new_warped, cv2.COLOR_BGR2GRAY)
+
+        # SSIM on the overlap
+        ssim_score, diff_map = ssim(prev_warped_gray, new_warped_gray, full=True)
+
+        change_map_raw = ((1.0 - diff_map) * 255).astype(np.uint8)
+        _, binary_mask = cv2.threshold(
+            change_map_raw, config.CHANGE_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
+
+        contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, _CONTOUR_APPROX)
+
+        change_events = []
+        event_id = 1
+        for cnt in contours:
+            area_px = int(cv2.contourArea(cnt))
+            if area_px < config.CHANGE_MIN_AREA_PX:
+                continue
+            bx, by, bw, bh = cv2.boundingRect(cnt)
+            if bh == 0:
+                continue
+            aspect = max(bw, bh) / max(min(bw, bh), 1)
+            if aspect > _MAX_ASPECT_RATIO:
+                continue
+
+            # Translate bbox back to mosaic coordinates
+            mosaic_bx = bx + ox_min
+            mosaic_by = by + oy_min
+
+            change_events.append({
+                "id": event_id,
+                "mosaic_bbox": [mosaic_bx, mosaic_by, bw, bh],
+                "area_px": area_px,
+                "type": "detected",
+                "ssim_score": round(ssim_score, 4),
+                "persistence": False,
+            })
+            event_id += 1
+
+        change_summary = {
+            "total_events": len(change_events),
+            "total_changed_area_cm2": 0.0,
+            "largest_change_cm2": 0.0,
+            "types": {"darkened": 0, "brightened": 0},
+            "ssim_score": round(ssim_score, 4),
+            "alignment_uncertain": False,
+            "alignment_confidence": 1.0,
+        }
+
+        return {
+            "change_events": change_events,
+            "change_summary": change_summary,
+        }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────

@@ -68,6 +68,17 @@ def index():
 # API — JSON data
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route("/api/mosaic_info")
+def api_mosaic_info():
+    """Return mosaic metadata: dimensions, image count, entries, grid info."""
+    if _pipeline is not None:
+        return jsonify(_pipeline.get_mosaic_info())
+    return jsonify({
+        "width": 0, "height": 0, "image_count": 0,
+        "entries": [], "grid": {"rows": 0, "cols": 0, "cell_size_px": config.MOSAIC_GRID_CELL_PX,
+                                "origin_x": 0, "origin_y": 0},
+    })
+
 @app.route("/api/status")
 def api_status():
     """Merge latest telemetry + mission_state into one status blob."""
@@ -85,19 +96,17 @@ def api_status():
 
 @app.route("/api/coverage")
 def api_coverage():
-    """Return 8×8 coverage grid as JSON for the canvas panel."""
-    rows = config.GRID_ROWS
-    cols = config.GRID_COLS
-
+    """Return dynamic coverage grid as JSON for the canvas panel."""
     if _pipeline is not None:
         hazard_grid = _pipeline.get_hazard_grid()
         cost_grid   = _pipeline.get_cost_grid()
+        rows, cols = cost_grid.shape
     else:
-        hazard_grid = [["SAFE"] * cols for _ in range(rows)]
+        rows, cols = 1, 1
+        hazard_grid = [["SAFE"]]
         cost_grid   = None
 
     state = _mission_state.get_snapshot() if _mission_state else {}
-    changed_cells = [tuple(c) for c in state.get("changes", {}).get("cells_with_changes", [])]
 
     grid = []
     for r in range(rows):
@@ -218,15 +227,14 @@ def api_route_comparison_image():
 
 @app.route("/api/cost_heatmap")
 def api_cost_heatmap():
-    """Return 8×8 JSON array: {row, col, cost, hazard_class} per cell."""
-    rows = config.GRID_ROWS
-    cols = config.GRID_COLS
-
+    """Return dynamic JSON array: {row, col, cost, hazard_class} per cell."""
     if _pipeline is not None:
         hazard_grid = _pipeline.get_hazard_grid()
         cost_grid   = _pipeline.get_cost_grid()
+        rows, cols = cost_grid.shape
     else:
-        hazard_grid = [["SAFE"] * cols for _ in range(rows)]
+        rows, cols = 1, 1
+        hazard_grid = [["SAFE"]]
         cost_grid   = None
 
     cells = []
@@ -248,7 +256,7 @@ def api_cost_grid():
     path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
     if os.path.exists(path):
         return send_file(os.path.abspath(path), mimetype="application/json")
-    return jsonify({"grid": [], "classifications": [], "coverage": [], "pass_data": [], "change_cells": []})
+    return jsonify({"grid": [], "rows": 0, "cols": 0, "classifications": [], "coverage": [], "pass_data": [], "change_cells": []})
 
 
 @app.route("/api/changes")
@@ -307,41 +315,73 @@ def api_yolo_annotated():
 
 @app.route("/api/cell_map")
 def api_cell_map():
-    """Return cell identification database summary."""
+    """Return mosaic entry summary (replaces old cell_identifier database)."""
     if _pipeline is not None:
-        cell_id = getattr(_pipeline, "_cell_identifier", None)
-        if cell_id is not None:
-            return jsonify(cell_id.get_cell_map())
+        info = _pipeline.get_mosaic_info()
+        summary = {}
+        for entry in info.get("entries", []):
+            summary[entry["filename"]] = {
+                "bbox": entry["bbox"],
+            }
+        return jsonify(summary)
     return jsonify({})
 
 
 @app.route("/api/plan_routes", methods=["POST"])
 def api_plan_routes():
-    """Body: {start: [row, col], end: [row, col]} → run plan_multiple_routes."""
+    """Body: {start_mosaic: [mx,my], end_mosaic: [mx,my]}
+    or legacy: {start: [row,col], end: [row,col]}
+    → run plan_multiple_routes. Mosaic coords are converted to grid coords internally."""
+    from processing.route_planner import grid_path_to_mosaic_path
+
     try:
         body = request.get_json(force=True) or {}
     except Exception:
         return jsonify({"error": "Invalid JSON"}), 400
-
-    start = tuple(body.get("start", list(config.ROUTE_START)))
-    end = tuple(body.get("end", list(config.ROUTE_END)))
-
-    # Validate coordinates
-    for label, pt in [("start", start), ("end", end)]:
-        if len(pt) != 2 or not (0 <= pt[0] < config.GRID_ROWS and 0 <= pt[1] < config.GRID_COLS):
-            return jsonify({"error": f"Invalid {label}: {pt}"}), 400
 
     if _pipeline is None:
         return jsonify({"error": "Pipeline not ready"}), 503
 
     cost_grid = _pipeline.get_cost_grid()
     hazard_grid = _pipeline.get_hazard_grid()
+    rows, cols = cost_grid.shape
     hazard_map_path = _pipeline.get_latest_hazard_map_path() if hasattr(_pipeline, 'get_latest_hazard_map_path') else None
+
+    start_mosaic = body.get("start_mosaic")
+    end_mosaic = body.get("end_mosaic")
+
+    if start_mosaic and end_mosaic:
+        # Convert mosaic pixel coords to grid coords
+        from processing.mosaic_grid import MosaicGrid
+        grid = _pipeline._mosaic_grid
+        start = grid.mosaic_px_to_grid(start_mosaic[0], start_mosaic[1])
+        end = grid.mosaic_px_to_grid(end_mosaic[0], end_mosaic[1])
+        # Store mosaic endpoints in pipeline
+        _pipeline.set_route_endpoints_mosaic(start_mosaic, end_mosaic)
+    else:
+        # Legacy grid coords
+        default_start = [0, 0]
+        default_end = [max(0, rows - 1), max(0, cols - 1)]
+        start = tuple(body.get("start", default_start))
+        end = tuple(body.get("end", default_end))
+        start_mosaic = None
+        end_mosaic = None
+
+    # Validate coordinates
+    for label, pt in [("start", start), ("end", end)]:
+        if len(pt) != 2 or not (0 <= pt[0] < rows and 0 <= pt[1] < cols):
+            return jsonify({"error": f"Invalid {label}: {pt} (grid is {rows}x{cols})"}), 400
 
     try:
         routes = _pipeline._route_planner.plan_multiple_routes(
             cost_grid, hazard_grid, start, end, hazard_map_path,
         )
+
+        # Add mosaic_path to each route
+        for name in ("fastest", "safest", "balanced"):
+            if name in routes and routes[name].get("path"):
+                routes[name]["mosaic_path"] = grid_path_to_mosaic_path(routes[name]["path"])
+
         if _mission_state:
             with _mission_state._lock:
                 _mission_state._state["routes"]["fastest"] = routes.get("fastest")
@@ -350,8 +390,14 @@ def api_plan_routes():
                 _mission_state._state["route"]["start"] = list(start)
                 _mission_state._state["route"]["end"] = list(end)
             _mission_state.save()
+
         routes["start"] = list(start)
         routes["end"] = list(end)
+        if start_mosaic:
+            routes["start_mosaic"] = start_mosaic
+        if end_mosaic:
+            routes["end_mosaic"] = end_mosaic
+
         return jsonify(routes)
     except Exception as e:
         logger.error(f"plan_routes failed: {e}", exc_info=True)
@@ -360,7 +406,7 @@ def api_plan_routes():
 
 @app.route("/api/plan_constrained", methods=["POST"])
 def api_plan_constrained():
-    """Body: {max_shadow_pct, min_hazard_clearance, start?, end?} → route JSON."""
+    """Body: {max_shadow_pct, min_hazard_clearance, start?, end?, start_mosaic?, end_mosaic?} → route JSON."""
     try:
         body = request.get_json(force=True) or {}
     except Exception:
@@ -368,8 +414,19 @@ def api_plan_constrained():
 
     max_shadow_pct = float(body.get("max_shadow_pct", 50.0))
     min_hazard_clearance = int(body.get("min_hazard_clearance", 1))
-    start = tuple(body.get("start", list(config.ROUTE_START)))
-    end = tuple(body.get("end", list(config.ROUTE_END)))
+
+    # Handle mosaic or grid coords
+    start_mosaic = body.get("start_mosaic")
+    end_mosaic = body.get("end_mosaic")
+    if start_mosaic and end_mosaic and _pipeline:
+        grid = _pipeline._mosaic_grid
+        start = grid.mosaic_px_to_grid(start_mosaic[0], start_mosaic[1])
+        end = grid.mosaic_px_to_grid(end_mosaic[0], end_mosaic[1])
+    else:
+        default_start = [0, 0]
+        default_end = [0, 0]
+        start = tuple(body.get("start", default_start))
+        end = tuple(body.get("end", default_end))
 
     if _pipeline is None:
         return jsonify({"error": "Pipeline not ready"}), 503

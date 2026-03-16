@@ -67,18 +67,28 @@ class MissionState:
             if key in self._state["hazards"]:
                 self._state["hazards"][key] += 1
 
-            row, col = grid_cell
-            self._state["coverage"]["cells_filled"] = len(
-                self._state["_cells_covered"]
-            )
-            self._state["_cells_covered"].add((row, col))
+            if grid_cell is not None:
+                row, col = grid_cell
+                self._state["_cells_covered"].add((row, col))
+
             self._state["coverage"]["cells_filled"] = len(
                 self._state["_cells_covered"]
             )
             total = self._state["coverage"]["cells_total"]
-            self._state["coverage"]["pct"] = round(
-                len(self._state["_cells_covered"]) / total * 100.0, 1
-            )
+            if total > 0:
+                self._state["coverage"]["pct"] = round(
+                    len(self._state["_cells_covered"]) / total * 100.0, 1
+                )
+
+    def record_mosaic_update(self, cells_surveyed: int, cells_total: int):
+        """Call after MosaicGrid updates to sync dynamic coverage stats."""
+        with self._lock:
+            self._state["coverage"]["cells_total"] = cells_total
+            self._state["coverage"]["cells_filled"] = cells_surveyed
+            if cells_total > 0:
+                self._state["coverage"]["pct"] = round(
+                    cells_surveyed / cells_total * 100.0, 1
+                )
 
     def record_change_result(self, change_summary: dict, change_events: list):
         """Call after ChangeDetector.detect() — only when events are found."""
@@ -109,9 +119,11 @@ class MissionState:
     def record_route_result(self, route_result: dict):
         """Call after RoutePlanner.plan() — overwrites route section (latest plan)."""
         with self._lock:
+            default_start = list(config.ROUTE_START) if config.ROUTE_START else None
+            default_end = list(config.ROUTE_END) if config.ROUTE_END else None
             self._state["route"] = {
-                "start":               route_result.get("path", [[0, 0]])[0] if route_result.get("path") else list(config.ROUTE_START),
-                "end":                 route_result.get("path", [])[-1] if route_result.get("path") else list(config.ROUTE_END),
+                "start":               route_result.get("path", [[0, 0]])[0] if route_result.get("path") else default_start,
+                "end":                 route_result.get("path", [])[-1] if route_result.get("path") else default_end,
                 "path_length":         route_result.get("path_length", 0),
                 "total_cost":          route_result.get("total_cost", 0.0),
                 "shadow_exposure_pct": route_result.get("shadow_exposure_pct", 0.0),
@@ -260,7 +272,7 @@ class MissionState:
             },
             "coverage": {
                 "cells_filled": 0,
-                "cells_total": config.GRID_ROWS * config.GRID_COLS,
+                "cells_total": 0,  # dynamic — updated by MosaicGrid
                 "pct": 0.0,
             },
             "hazards": {
@@ -279,8 +291,8 @@ class MissionState:
                 "alignment_warnings": 0,
             },
             "route": {
-                "start": list(config.ROUTE_START),
-                "end": list(config.ROUTE_END),
+                "start": list(config.ROUTE_START) if config.ROUTE_START else None,
+                "end": list(config.ROUTE_END) if config.ROUTE_END else None,
                 "path_length": 0,
                 "total_cost": 0.0,
                 "shadow_exposure_pct": 0.0,

@@ -449,7 +449,23 @@ def _path_cost(path: list, cost_grid: np.ndarray) -> float:
 # Visualisation
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CELL_VIS_PX = 64   # pixels per grid cell in the route map
+_CELL_VIS_PX = 64   # pixels per grid cell in the route map (for visualization)
+
+
+def grid_path_to_mosaic_path(path: list, cell_px: int = None) -> list:
+    """
+    Convert a grid path [(r,c),...] to mosaic pixel coordinates [(mx,my),...].
+    Each grid cell center is at (c * cell_px + cell_px/2, r * cell_px + cell_px/2).
+    """
+    if cell_px is None:
+        cell_px = config.MOSAIC_GRID_CELL_PX
+    mosaic_path = []
+    for step in path:
+        r, c = step if isinstance(step, (list, tuple)) else (step[0], step[1])
+        mx = c * cell_px + cell_px / 2
+        my = r * cell_px + cell_px / 2
+        mosaic_path.append([mx, my])
+    return mosaic_path
 
 
 def _save_route_comparison(

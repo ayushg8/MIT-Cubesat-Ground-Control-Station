@@ -42,11 +42,19 @@ CHANGE_THRESHOLD = 30              # Pixel difference (0-255) to count as change
 CHANGE_MIN_AREA_PX = 50            # Min contiguous changed pixels to report as an event
 
 # === ROUTE PLANNING ===
-GRID_ROWS = 8
-GRID_COLS = 8
-ROUTE_START = (0, 0)               # Defaults — can be overridden from dashboard
-ROUTE_END = (7, 7)                 # Defaults — can be overridden from dashboard
+GRID_ROWS = 8                      # DEPRECATED — kept for legacy references
+GRID_COLS = 8                      # DEPRECATED — kept for legacy references
+ROUTE_START = None                 # Set via dashboard click on mosaic
+ROUTE_END = None                   # Set via dashboard click on mosaic
 GRID_CELL_SIZE_CM = 10.0           # Physical size of each grid cell (cm)
+
+# === MOSAIC ===
+MOSAIC_GRID_CELL_PX = 80           # Each dynamic grid cell = this many mosaic pixels
+MOSAIC_INITIAL_CANVAS_PX = 640     # Initial canvas size (square)
+MOSAIC_PX_PER_CM = 8.0             # Mosaic pixels per centimetre (calibration)
+MOSAIC_MIN_SIFT_INLIERS = 10      # Minimum RANSAC inliers for a valid match
+MOSAIC_CANVAS_PAD_PX = 100         # Padding added when canvas grows
+MOSAIC_MAX_CANVAS_PX = 4096        # Memory cap for canvas dimensions
 
 # === DASHBOARD ===
 DASHBOARD_PORT = 3000

@@ -161,16 +161,38 @@ input.active-input { border-color: var(--cyan); }
 .stat-num { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--bright); }
 .stat-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-top: 4px; }
 
-/* ══ COST HEATMAP ══ */
-#heatmap-section { flex: 0 0 auto; }
-#heatmap-wrap { position: relative; display: inline-block; }
-#cost-heatmap-canvas { display: block; cursor: crosshair; background: var(--bg); }
-#heatmap-tooltip {
+/* ══ MOSAIC VIEWER ══ */
+#mosaic-section { flex: 0 0 auto; }
+#mosaic-viewer-wrap {
+  position: relative; display: inline-block; overflow: hidden;
+  width: 700px; height: 600px; border: 1px solid var(--border);
+  background: #0d1220; cursor: grab;
+}
+#mosaic-viewer-wrap:active { cursor: grabbing; }
+#mosaic-canvas { position: absolute; top: 0; left: 0; }
+#mosaic-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+#mosaic-tooltip {
   position: absolute; pointer-events: none; display: none;
   background: rgba(10,14,23,0.95); border: 1px solid var(--cyan);
   color: var(--bright); font-family: var(--mono); font-size: 10px;
   padding: 4px 8px; white-space: nowrap; z-index: 100;
 }
+#mosaic-minimap {
+  position: absolute; bottom: 8px; right: 8px; width: 120px; height: 120px;
+  border: 1px solid var(--border); background: rgba(10,14,23,0.8);
+  pointer-events: none; z-index: 50;
+}
+.mosaic-controls {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;
+}
+.mosaic-controls button { padding: 4px 10px; }
+.mosaic-controls button.active-mode { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.1); }
+.overlay-toggles { display: flex; gap: 8px; margin-left: auto; }
+.overlay-toggles label {
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  display: flex; align-items: center; gap: 3px; cursor: pointer;
+}
+.overlay-toggles input[type=checkbox] { width: 12px; height: 12px; }
 .heatmap-legend {
   display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0;
   font-family: var(--mono); font-size: 9px; color: var(--dim);
@@ -500,30 +522,32 @@ input.active-input { border-color: var(--cyan); }
 
 <!-- ═══ TERRAIN TAB ═══ -->
 <div class="tab-page" id="tab-terrain">
-  <div class="pnl" id="heatmap-section">
+  <div class="pnl" id="mosaic-section">
     <div class="pnl-hdr">
-      <span class="pnl-title">Terrain Cost Map</span>
+      <span class="pnl-title">Mosaic Terrain Viewer</span>
+      <span class="pnl-badge" id="mosaic-count-badge" style="border-color:var(--dim);color:var(--dim);">0 IMAGES</span>
       <span class="pnl-badge" id="route-status-badge" style="border-color:var(--dim);color:var(--dim);">NO ROUTES</span>
     </div>
     <div class="pnl-body">
       <div id="route-change-warning"></div>
-      <div class="ep-row" style="margin-bottom:6px;">
-        <span class="ep-label start">Landing (L):</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
-        <input id="ep-start-r" class="ep-input start-input" type="number" min="0" max="7" value="0">
-        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
-        <input id="ep-start-c" class="ep-input start-input" type="number" min="0" max="7" value="0">
-        <span class="ep-label end" style="margin-left:12px;">Target (T):</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
-        <input id="ep-end-r" class="ep-input end-input" type="number" min="0" max="7" value="7">
-        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
-        <input id="ep-end-c" class="ep-input end-input" type="number" min="0" max="7" value="7">
-        <button onclick="planRoutes(this)" style="margin-left:8px;">PLAN ROUTES</button>
+      <div class="mosaic-controls">
+        <button id="btn-zoom-in" onclick="mosaicZoom(1.3)" title="Zoom In">+</button>
+        <button id="btn-zoom-out" onclick="mosaicZoom(1/1.3)" title="Zoom Out">-</button>
+        <button id="btn-fit" onclick="mosaicFit()" title="Fit to view">FIT</button>
+        <button id="btn-set-landing" onclick="mosaicSetMode('landing')" title="Click mosaic to set landing point">SET LANDING</button>
+        <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
         <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
+        <div class="overlay-toggles">
+          <label><input type="checkbox" id="chk-hazard" checked onchange="mosaicRedraw()">HAZARD</label>
+          <label><input type="checkbox" id="chk-route" checked onchange="mosaicRedraw()">ROUTE</label>
+          <label><input type="checkbox" id="chk-changes" checked onchange="mosaicRedraw()">CHANGES</label>
+        </div>
       </div>
-      <div id="heatmap-wrap">
-        <canvas id="cost-heatmap-canvas" width="660" height="656"></canvas>
-        <div id="heatmap-tooltip"></div>
+      <div id="mosaic-viewer-wrap">
+        <canvas id="mosaic-canvas"></canvas>
+        <canvas id="mosaic-overlay"></canvas>
+        <div id="mosaic-tooltip"></div>
+        <canvas id="mosaic-minimap" width="120" height="120"></canvas>
       </div>
       <div class="heatmap-legend" style="margin-top:4px;">
         <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;opacity:0.6;"></span>Safe(1)</div>
@@ -533,7 +557,7 @@ input.active-input { border-color: var(--cyan); }
         <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid #ff4444;"></span>Impass</div>
         <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurv</div>
       </div>
-      <div class="note" style="margin-top:2px;">Click: 1st = Landing <span style="color:var(--green);">L</span>, 2nd = Target <span style="color:var(--red);">T</span>, 3rd = Reset</div>
+      <div class="note" style="margin-top:2px;">Click: <span style="color:var(--green);">SET LANDING</span> then click mosaic for L, <span style="color:var(--red);">SET TARGET</span> then click for T</div>
     </div>
   </div>
 
@@ -1153,7 +1177,7 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
-let _hmShowOnlyRoute = null; // key of route shown solo, or null for all
+let _mosaicShowOnlyRoute = null; // key of route shown solo, or null for all
 
 function renderRouteCards(routes) {
   const selected = routes.selected || 'safest';
@@ -1180,7 +1204,7 @@ function renderRouteCards(routes) {
     const riskLevel = rd.risk_level || 'MODERATE';
     const riskColor = riskLevel === 'LOW' ? '#00ff88' : riskLevel === 'MODERATE' ? '#ffaa00' : '#ff4444';
 
-    const showOnlyActive = _hmShowOnlyRoute === name;
+    const showOnlyActive = _mosaicShowOnlyRoute === name;
 
     card.innerHTML = `
       <div class="rc-name">
@@ -1217,8 +1241,7 @@ function renderRouteCards(routes) {
 }
 
 function toggleShowOnly(name) {
-  _hmShowOnlyRoute = (_hmShowOnlyRoute === name) ? null : name;
-  _hmNeedsRedraw = true;
+  _mosaicShowOnlyRoute = (_mosaicShowOnlyRoute === name) ? null : name;
   if (_lastRouteData) renderRouteCards(_lastRouteData);
 }
 
@@ -1270,7 +1293,12 @@ async function runConstrainedPlan(btn) {
     const r = await fetch('/api/plan_constrained', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({max_shadow_pct: maxShadow, min_hazard_clearance: clearance, start: getRouteStart(), end: getRouteEnd()}),
+      body: JSON.stringify({
+        max_shadow_pct: maxShadow,
+        min_hazard_clearance: clearance,
+        start_mosaic: _routeStartMosaic,
+        end_mosaic: _routeEndMosaic,
+      }),
     });
     const rd = await r.json();
     const resultEl = el('constrained-result');
@@ -1295,7 +1323,7 @@ async function runConstrainedPlan(btn) {
           <div class="rc-kv"><span>Risk</span><span class="rv" style="color:${riskColor};font-weight:700;">${riskLevel}</span></div>
           <div class="rc-actions">
             <button onclick="selectRoute('constrained')">SELECT</button>
-            <button class="${_hmShowOnlyRoute==='constrained'?'active-show':''}" onclick="toggleShowOnly('constrained')">SHOW ONLY</button>
+            <button class="${_mosaicShowOnlyRoute==='constrained'?'active-show':''}" onclick="toggleShowOnly('constrained')">SHOW ONLY</button>
           </div>
         </div>`;
     } else {
@@ -1320,180 +1348,161 @@ async function runConstrainedPlan(btn) {
   btn.textContent = 'RECALCULATE';
 }
 
-// ─── Route endpoints state ────────────────────────────────────────────────────
-let _routeStart = [0, 0];
-let _routeEnd   = [7, 7];
-let _heatmapClickState = 0; // 0=set start, 1=set end, 2=reset
+// ─── Route endpoints state (mosaic pixel coords) ─────────────────────────────
+let _routeStartMosaic = null; // [mx, my] or null
+let _routeEndMosaic   = null;
+let _mosaicClickMode  = null; // 'landing' | 'target' | null
 
-function getRouteStart() { return [parseInt(el('ep-start-r').value)||0, parseInt(el('ep-start-c').value)||0]; }
-function getRouteEnd()   { return [parseInt(el('ep-end-r').value)||7, parseInt(el('ep-end-c').value)||7]; }
-function setRouteStart(r,c) { _routeStart=[r,c]; el('ep-start-r').value=r; el('ep-start-c').value=c; }
-function setRouteEnd(r,c)   { _routeEnd=[r,c]; el('ep-end-r').value=r; el('ep-end-c').value=c; }
+function getRouteStart() { return _routeStartMosaic ? [_routeStartMosaic[0], _routeStartMosaic[1]] : null; }
+function getRouteEnd()   { return _routeEndMosaic ? [_routeEndMosaic[0], _routeEndMosaic[1]] : null; }
 
 async function planRoutes(btn) {
-  const start = getRouteStart(), end = getRouteEnd();
+  if (!_routeStartMosaic || !_routeEndMosaic) {
+    const fb = el('plan-routes-feedback');
+    fb.textContent = 'Set landing and target first'; fb.style.color = 'var(--amber)';
+    return;
+  }
   const fb = el('plan-routes-feedback');
   if (btn) { btn.disabled = true; btn.textContent = 'PLANNING...'; }
   fb.textContent = ''; fb.style.color = 'var(--text-dim)';
   try {
     const r = await fetch('/api/plan_routes', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({start, end}),
+      body: JSON.stringify({start_mosaic: _routeStartMosaic, end_mosaic: _routeEndMosaic}),
     });
     const d = await r.json();
     if (d.error) {
       fb.textContent = d.error; fb.style.color = 'var(--red)';
       if (btn) flashBtn(btn, false);
     } else {
-      _lastRouteData = d; _routeStart = start; _routeEnd = end;
+      _lastRouteData = d;
       renderRouteCards(d); renderPathStatsCard(d);
       fb.textContent = 'ROUTES UPDATED'; fb.style.color = 'var(--green)';
       if (btn) flashBtn(btn, true);
-      _hmRouteData = d; _hmRouteAnimStart = performance.now();
-      _hmNeedsRedraw = true;
+      _mosaicRouteData = d;
+      mosaicRedraw();
     }
   } catch(e) { fb.textContent='ERROR'; fb.style.color='var(--red)'; if(btn)flashBtn(btn,false); }
   if (btn) { btn.disabled = false; btn.textContent = 'PLAN ROUTES'; }
 }
 
+function mosaicSetMode(mode) {
+  _mosaicClickMode = mode;
+  el('btn-set-landing').classList.toggle('active-mode', mode === 'landing');
+  el('btn-set-target').classList.toggle('active-mode', mode === 'target');
+  const fb = el('plan-routes-feedback');
+  if (mode === 'landing') fb.textContent = 'Click mosaic to set Landing (L)';
+  else if (mode === 'target') fb.textContent = 'Click mosaic to set Target (T)';
+  fb.style.color = mode === 'landing' ? 'var(--green)' : 'var(--red)';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// INTERACTIVE COST HEATMAP — Canvas renderer with routes, animation, tooltips
+// INTERACTIVE MOSAIC VIEWER — Pan/zoom canvas with hazard, route, change overlays
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const HM_ROWS = 8, HM_COLS = 8;
-const HM_MARGIN_LEFT = 24;   // space for row labels
-const HM_MARGIN_TOP  = 20;   // space for col labels
-const HM_SIZE = 636;         // grid drawing area (square) — larger for tab layout
-const HM_CELL = HM_SIZE / HM_COLS; // ~79.5px per cell
-const HM_W = HM_MARGIN_LEFT + HM_SIZE;
-const HM_H = HM_MARGIN_TOP  + HM_SIZE;
-const COL_LABELS = 'ABCDEFGH';
-
+let _mosaicImg       = null;  // HTMLImageElement of the mosaic canvas
+let _mosaicInfo      = null;  // from /api/mosaic_info
 let _heatmapData     = null;  // from /api/cost_grid
-let _hmRouteData     = null;  // from /api/routes
-let _hmHoverCell     = null;  // {row, col} or null
-let _hmNeedsRedraw   = true;
-let _hmAnimFrame     = null;
-let _hmRouteAnimStart = 0;    // timestamp when route animation started
-const _hmRouteAnimDur = 1000; // ms for path draw animation
+let _mosaicRouteData = null;  // from /api/routes
+let _mosaicLastCount = 0;     // last known image count (to detect changes)
 
-// Cell fill colours at 60% opacity over dark bg
+// Transform state for pan/zoom
+let _mvScale   = 1.0;
+let _mvOffsetX = 0;
+let _mvOffsetY = 0;
+
+// Dragging state
+let _mvDragging = false;
+let _mvDragStartX = 0, _mvDragStartY = 0;
+let _mvDragOffX = 0, _mvDragOffY = 0;
+
 function hmCellFill(cost, cls, surveyed) {
-  if (!surveyed) return null;             // unsurveyed handled separately
-  if (cls === 'IMPASSABLE' || cost >= 999) return null; // crosshatch
-  if (cost <= 1)  return 'rgba(0,255,136,0.60)';   // safe
-  if (cost <= 5)  return 'rgba(255,170,0,0.60)';   // moderate
-  if (cost <= 15) return 'rgba(68,136,255,0.60)';  // shadow
-  if (cost <= 20) return 'rgba(255,68,68,0.60)';   // hazard
-  return 'rgba(30,34,51,1)';
+  if (!surveyed) return null;
+  if (cls === 'IMPASSABLE' || cost >= 999) return 'rgba(255,68,68,0.35)';
+  if (cost <= 1)  return 'rgba(0,255,136,0.35)';
+  if (cost <= 5)  return 'rgba(255,170,0,0.35)';
+  if (cost <= 15) return 'rgba(68,136,255,0.35)';
+  if (cost <= 20) return 'rgba(255,68,68,0.35)';
+  return null;
 }
 
-function hmCellName(cost, cls) {
-  if (cls === 'IMPASSABLE' || cost >= 999) return 'IMPASSABLE';
-  if (cost <= 1)  return 'SAFE';
-  if (cost <= 5)  return 'MODERATE';
-  if (cost <= 15) return 'SHADOW';
-  if (cost <= 20) return 'HAZARD';
-  return 'UNKNOWN';
-}
+// ─── Core draw ───────────────────────────────────────────────────────────────
+function mosaicDraw(now) {
+  const wrap = el('mosaic-viewer-wrap');
+  const canvas = el('mosaic-canvas');
+  const overlay = el('mosaic-overlay');
+  if (!wrap || !canvas || !overlay) return;
 
-// ─── Main draw function ──────────────────────────────────────────────────────
-function hmDraw(now) {
-  const canvas = el('cost-heatmap-canvas');
-  if (!canvas) return;
-  canvas.width = HM_W; canvas.height = HM_H;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  canvas.width = W; canvas.height = H;
+  overlay.width = W; overlay.height = H;
+
   const ctx = canvas.getContext('2d');
+  const octx = overlay.getContext('2d');
 
   // Clear
-  ctx.fillStyle = '#0a0e17';
-  ctx.fillRect(0, 0, HM_W, HM_H);
+  ctx.fillStyle = '#0d1220';
+  ctx.fillRect(0, 0, W, H);
+  octx.clearRect(0, 0, W, H);
 
-  const ox = HM_MARGIN_LEFT, oy = HM_MARGIN_TOP;
-
-  // Column labels A–H
-  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let c = 0; c < HM_COLS; c++) {
-    ctx.fillText(COL_LABELS[c], ox + c * HM_CELL + HM_CELL/2, oy/2);
+  // Draw mosaic image
+  if (_mosaicImg && _mosaicImg.complete && _mosaicImg.naturalWidth > 0) {
+    ctx.save();
+    ctx.translate(_mvOffsetX, _mvOffsetY);
+    ctx.scale(_mvScale, _mvScale);
+    ctx.drawImage(_mosaicImg, 0, 0);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#3a3f4b';
+    ctx.font = '14px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('No mosaic data — waiting for images', W/2, H/2);
   }
-  // Row labels 1–8
-  ctx.textAlign = 'right';
-  for (let r = 0; r < HM_ROWS; r++) {
-    ctx.fillText(String(r+1), ox - 6, oy + r * HM_CELL + HM_CELL/2);
-  }
 
-  // Build cell lookup from cost_grid JSON
-  const cg = _heatmapData;
-  const grid        = cg ? cg.grid : null;
-  const cls         = cg ? cg.classifications : null;
-  const coverage    = cg ? cg.coverage : null;
-  const passData    = cg ? cg.pass_data : null;
-  const changeCells = cg ? (cg.change_cells || []) : [];
-  const changeCellSet = new Set(changeCells.map(c => c[0]+','+c[1]));
+  // ── Overlay: Hazard grid ──
+  const showHazard = el('chk-hazard') && el('chk-hazard').checked;
+  if (showHazard && _heatmapData && _mosaicInfo) {
+    const gi = _mosaicInfo.grid;
+    const cellPx = gi.cell_size_px || 80;
+    const cg = _heatmapData;
+    const grid = cg.grid || [];
+    const cls = cg.classifications || [];
+    const coverage = cg.coverage || [];
 
-  // ── Draw cells ──
-  for (let r = 0; r < HM_ROWS; r++) {
-    for (let c = 0; c < HM_COLS; c++) {
-      const x = ox + c * HM_CELL, y = oy + r * HM_CELL;
-      const cost = grid ? grid[r][c] : 1;
-      const klass = cls ? cls[r][c] : 'SAFE';
-      const surv = coverage ? coverage[r][c] : false;
+    octx.save();
+    octx.translate(_mvOffsetX, _mvOffsetY);
+    octx.scale(_mvScale, _mvScale);
 
-      if (!surv) {
-        // Unsurveyed cell
-        ctx.fillStyle = '#1e2233';
-        ctx.fillRect(x, y, HM_CELL, HM_CELL);
-        ctx.fillStyle = '#3a3f4b';
-        ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('?', x + HM_CELL/2, y + HM_CELL/2);
-      } else if (klass === 'IMPASSABLE' || cost >= 999) {
-        // Impassable: dark fill + red crosshatch
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(x, y, HM_CELL, HM_CELL);
-        ctx.strokeStyle = 'rgba(255,68,68,0.4)'; ctx.lineWidth = 1;
-        for (let i = -HM_CELL; i < HM_CELL * 2; i += 8) {
-          ctx.beginPath(); ctx.moveTo(x + i, y); ctx.lineTo(x + i + HM_CELL, y + HM_CELL); ctx.stroke();
+    const rows = grid.length, cols = rows > 0 ? grid[0].length : 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cost = grid[r][c];
+        const klass = cls[r] ? cls[r][c] : 'SAFE';
+        const surv = coverage[r] ? coverage[r][c] : false;
+        const fill = hmCellFill(cost, klass, surv);
+        if (fill) {
+          octx.fillStyle = fill;
+          octx.fillRect(c * cellPx, r * cellPx, cellPx, cellPx);
         }
-      } else {
-        ctx.fillStyle = hmCellFill(cost, klass, surv);
-        ctx.fillRect(x, y, HM_CELL, HM_CELL);
-      }
-
-      // Change cell animated glow
-      if (changeCellSet.has(r+','+c)) {
-        const pulse = (Math.sin(now / 1000 * Math.PI) + 1) / 2; // 0..1 over 2s
-        ctx.save();
-        ctx.strokeStyle = `rgba(255,149,0,${0.3 + pulse * 0.5})`;
-        ctx.lineWidth = 2 + pulse;
-        ctx.strokeRect(x + 2, y + 2, HM_CELL - 4, HM_CELL - 4);
-        ctx.restore();
-      }
-
-      // Hover highlight
-      if (_hmHoverCell && _hmHoverCell.row === r && _hmHoverCell.col === c) {
-        ctx.fillStyle = 'rgba(0,212,255,0.12)';
-        ctx.fillRect(x, y, HM_CELL, HM_CELL);
-        ctx.strokeStyle = 'rgba(0,212,255,0.5)'; ctx.lineWidth = 2;
-        ctx.strokeRect(x+1, y+1, HM_CELL-2, HM_CELL-2);
       }
     }
+
+    // Grid lines
+    octx.strokeStyle = 'rgba(58,63,75,0.3)'; octx.lineWidth = 0.5;
+    for (let r = 0; r <= rows; r++) {
+      octx.beginPath(); octx.moveTo(0, r*cellPx); octx.lineTo(cols*cellPx, r*cellPx); octx.stroke();
+    }
+    for (let c = 0; c <= cols; c++) {
+      octx.beginPath(); octx.moveTo(c*cellPx, 0); octx.lineTo(c*cellPx, rows*cellPx); octx.stroke();
+    }
+    octx.restore();
   }
 
-  // ── Grid lines ──
-  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1;
-  for (let i = 0; i <= HM_ROWS; i++) {
-    ctx.beginPath(); ctx.moveTo(ox, oy + i*HM_CELL); ctx.lineTo(ox + HM_SIZE, oy + i*HM_CELL); ctx.stroke();
-  }
-  for (let j = 0; j <= HM_COLS; j++) {
-    ctx.beginPath(); ctx.moveTo(ox + j*HM_CELL, oy); ctx.lineTo(ox + j*HM_CELL, oy + HM_SIZE); ctx.stroke();
-  }
-
-  // ── Route overlay ──
-  if (_hmRouteData) {
-    const routes = _hmRouteData;
+  // ── Overlay: Routes ──
+  const showRoute = el('chk-route') && el('chk-route').checked;
+  if (showRoute && _mosaicRouteData && _mosaicInfo) {
+    const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
+    const routes = _mosaicRouteData;
     const selected = routes.selected || 'safest';
-    const elapsed = now - _hmRouteAnimStart;
-    const animPct = Math.min(1, elapsed / _hmRouteAnimDur);
 
     const routeDefs = [
       {key:'fastest', color:'#00ff88', dash:[8,6]},
@@ -1501,192 +1510,297 @@ function hmDraw(now) {
       {key:'balanced',color:'#ffaa00', dash:[3,4]},
     ];
 
+    octx.save();
+    octx.translate(_mvOffsetX, _mvOffsetY);
+    octx.scale(_mvScale, _mvScale);
+
     for (const rd of routeDefs) {
       const rdata = routes[rd.key];
-      if (!rdata || !rdata.path || rdata.path.length < 2) continue;
-      const path = rdata.path;
+      if (!rdata) continue;
+      // Use mosaic_path if available, else grid path
+      const mpath = rdata.mosaic_path;
+      const gpath = rdata.path;
+      if ((!mpath || mpath.length < 2) && (!gpath || gpath.length < 2)) continue;
+
       const isSel = rd.key === selected;
-      let alpha;
-      if (_hmShowOnlyRoute) {
-        alpha = rd.key === _hmShowOnlyRoute ? 1.0 : 0.15;
+      octx.globalAlpha = isSel ? 1.0 : 0.4;
+      octx.strokeStyle = rd.color;
+      octx.lineWidth = 3 / _mvScale;
+      octx.setLineDash(rd.dash.map(d => d / _mvScale));
+      octx.beginPath();
+
+      if (mpath && mpath.length >= 2) {
+        for (let i = 0; i < mpath.length; i++) {
+          if (i === 0) octx.moveTo(mpath[i][0], mpath[i][1]);
+          else octx.lineTo(mpath[i][0], mpath[i][1]);
+        }
       } else {
-        alpha = isSel ? 1.0 : 0.4;
+        for (let i = 0; i < gpath.length; i++) {
+          const px = gpath[i][1] * cellPx + cellPx/2;
+          const py = gpath[i][0] * cellPx + cellPx/2;
+          if (i === 0) octx.moveTo(px, py); else octx.lineTo(px, py);
+        }
       }
-      const drawLen = Math.floor(path.length * animPct);
-      if (drawLen < 2) continue;
+      octx.stroke();
+      octx.setLineDash([]);
+    }
+    octx.globalAlpha = 1.0;
+    octx.restore();
+  }
 
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = rd.color;
-      ctx.lineWidth = 3;
-      ctx.setLineDash(rd.dash);
-      ctx.beginPath();
-      for (let i = 0; i < drawLen; i++) {
-        const pr = path[i][0], pc = path[i][1];
-        const px = ox + pc * HM_CELL + HM_CELL/2;
-        const py = oy + pr * HM_CELL + HM_CELL/2;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  // ── Overlay: Change bboxes ──
+  const showChanges = el('chk-changes') && el('chk-changes').checked;
+  if (showChanges && _heatmapData) {
+    const changeCells = _heatmapData.change_cells || [];
+    if (changeCells.length > 0 && _mosaicInfo) {
+      const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
+      octx.save();
+      octx.translate(_mvOffsetX, _mvOffsetY);
+      octx.scale(_mvScale, _mvScale);
+      const pulse = (Math.sin((now || 0) / 1000 * Math.PI) + 1) / 2;
+      octx.strokeStyle = `rgba(255,149,0,${0.4 + pulse * 0.5})`;
+      octx.lineWidth = 2 / _mvScale;
+      for (const cc of changeCells) {
+        const r = cc[0], c = cc[1];
+        octx.strokeRect(c * cellPx + 2, r * cellPx + 2, cellPx - 4, cellPx - 4);
       }
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Arrow triangles every 2 cells
-      for (let i = 2; i < drawLen; i += 2) {
-        const pr0 = path[i-1][0], pc0 = path[i-1][1];
-        const pr1 = path[i][0], pc1 = path[i][1];
-        const x0 = ox + pc0*HM_CELL + HM_CELL/2, y0 = oy + pr0*HM_CELL + HM_CELL/2;
-        const x1 = ox + pc1*HM_CELL + HM_CELL/2, y1 = oy + pr1*HM_CELL + HM_CELL/2;
-        const ang = Math.atan2(y1-y0, x1-x0);
-        const mx = (x0+x1)/2, my = (y0+y1)/2;
-        ctx.fillStyle = rd.color;
-        ctx.beginPath();
-        ctx.moveTo(mx + Math.cos(ang)*5, my + Math.sin(ang)*5);
-        ctx.lineTo(mx + Math.cos(ang + 2.5)*5, my + Math.sin(ang + 2.5)*5);
-        ctx.lineTo(mx + Math.cos(ang - 2.5)*5, my + Math.sin(ang - 2.5)*5);
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.restore();
+      octx.restore();
     }
   }
 
-  // ── Landing (L) and Target (T) pulsing markers ──
-  const start = getRouteStart(), end = getRouteEnd();
-  const pulseR = 8 + 4 * ((Math.sin(now / 400) + 1) / 2); // 8–12px
-  _hmDrawEndpoint(ctx, start[0], start[1], ox, oy, 'L', '#00c875', pulseR, now);
-  _hmDrawEndpoint(ctx, end[0], end[1], ox, oy, 'T', '#ff3b3b', pulseR, now);
+  // ── Overlay: Landing (L) and Target (T) markers ──
+  octx.save();
+  octx.translate(_mvOffsetX, _mvOffsetY);
+  octx.scale(_mvScale, _mvScale);
+  const markerR = Math.max(8, 12 / _mvScale);
+  const pulseR = markerR + 4 * ((Math.sin((now || 0) / 400) + 1) / 2) / _mvScale;
+  if (_routeStartMosaic) {
+    _drawMosaicMarker(octx, _routeStartMosaic[0], _routeStartMosaic[1], 'L', '#00c875', pulseR);
+  }
+  if (_routeEndMosaic) {
+    _drawMosaicMarker(octx, _routeEndMosaic[0], _routeEndMosaic[1], 'T', '#ff3b3b', pulseR);
+  }
+  octx.restore();
 
-  // Continue animation
-  _hmAnimFrame = requestAnimationFrame(hmDraw);
+  // ── Minimap ──
+  _drawMinimap(W, H);
+
+  requestAnimationFrame(mosaicDraw);
 }
 
-function _hmDrawEndpoint(ctx, row, col, ox, oy, label, color, radius, now) {
-  const cx = ox + col * HM_CELL + HM_CELL/2;
-  const cy = oy + row * HM_CELL + HM_CELL/2;
-
-  // Outer glow
+function _drawMosaicMarker(ctx, mx, my, label, color, radius) {
   ctx.save();
-  const glowR = radius + 4;
-  const grad = ctx.createRadialGradient(cx, cy, radius * 0.5, cx, cy, glowR);
-  grad.addColorStop(0, color);
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  const glowR = radius + 4 / _mvScale;
+  const grad = ctx.createRadialGradient(mx, my, radius * 0.5, mx, my, glowR);
+  grad.addColorStop(0, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI*2); ctx.fill();
-
-  // Solid circle
-  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2);
+  ctx.beginPath(); ctx.arc(mx, my, glowR, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(mx, my, radius, 0, Math.PI*2);
   ctx.fillStyle = color; ctx.fill();
-  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2; ctx.stroke();
-
-  // Letter
+  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2 / _mvScale; ctx.stroke();
   ctx.fillStyle = '#000';
   ctx.font = `bold ${Math.max(10, radius)}px monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, cx, cy + 1);
+  ctx.fillText(label, mx, my + 1);
   ctx.restore();
 }
 
-// ─── Heatmap data polling ────────────────────────────────────────────────────
-let _hmCostGridData = null;
+function _drawMinimap(viewW, viewH) {
+  const mc = el('mosaic-minimap');
+  if (!mc || !_mosaicImg || !_mosaicImg.naturalWidth) return;
+  const mctx = mc.getContext('2d');
+  const mw = mc.width, mh = mc.height;
+  mctx.fillStyle = '#0d1220'; mctx.fillRect(0, 0, mw, mh);
 
-async function pollCostHeatmap() {
-  try {
-    const r = await fetch('/api/cost_grid');
-    if (!r.ok) return;
-    const d = await r.json();
-    _heatmapData = d;
-    _hmNeedsRedraw = true;
-    renderQuadrantSummary(d);
-  } catch(e) {}
+  const iw = _mosaicImg.naturalWidth, ih = _mosaicImg.naturalHeight;
+  const scale = Math.min(mw / iw, mh / ih);
+  const dx = (mw - iw * scale) / 2, dy = (mh - ih * scale) / 2;
+  mctx.drawImage(_mosaicImg, dx, dy, iw * scale, ih * scale);
 
-  // Also poll routes
-  try {
-    const r2 = await fetch('/api/routes');
-    if (!r2.ok) return;
-    const rd = await r2.json();
-    const hadRoutes = _hmRouteData != null;
-    _hmRouteData = rd;
-    _lastRouteData = rd;
-    if (!hadRoutes && rd) _hmRouteAnimStart = performance.now();
-  } catch(e) {}
+  // Viewport rectangle
+  const vx = (-_mvOffsetX / _mvScale) * scale + dx;
+  const vy = (-_mvOffsetY / _mvScale) * scale + dy;
+  const vw = (viewW / _mvScale) * scale;
+  const vh = (viewH / _mvScale) * scale;
+  mctx.strokeStyle = 'rgba(0,212,255,0.8)'; mctx.lineWidth = 1;
+  mctx.strokeRect(vx, vy, vw, vh);
 }
 
-// ─── Heatmap mouse events ────────────────────────────────────────────────────
+// ─── Zoom / Pan / Fit ────────────────────────────────────────────────────────
+function mosaicZoom(factor) {
+  const wrap = el('mosaic-viewer-wrap');
+  const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
+  const newScale = Math.max(0.1, Math.min(10, _mvScale * factor));
+  _mvOffsetX = cx - (cx - _mvOffsetX) * (newScale / _mvScale);
+  _mvOffsetY = cy - (cy - _mvOffsetY) * (newScale / _mvScale);
+  _mvScale = newScale;
+}
+
+function mosaicFit() {
+  if (!_mosaicImg || !_mosaicImg.naturalWidth) return;
+  const wrap = el('mosaic-viewer-wrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const iw = _mosaicImg.naturalWidth, ih = _mosaicImg.naturalHeight;
+  _mvScale = Math.min(W / iw, H / ih) * 0.95;
+  _mvOffsetX = (W - iw * _mvScale) / 2;
+  _mvOffsetY = (H - ih * _mvScale) / 2;
+}
+
+function mosaicRedraw() { /* next rAF loop will redraw */ }
+
+// ─── Mouse events for pan/zoom/click ─────────────────────────────────────────
 (function() {
-  const canvas = document.getElementById('cost-heatmap-canvas');
-  const tooltip = document.getElementById('heatmap-tooltip');
+  const wrap = document.getElementById('mosaic-viewer-wrap');
+  const tooltip = document.getElementById('mosaic-tooltip');
+  if (!wrap) return;
 
-  function cellFromEvent(e) {
-    const rect = canvas.getBoundingClientRect();
-    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
-    const mx = (e.clientX - rect.left) * sx - HM_MARGIN_LEFT;
-    const my = (e.clientY - rect.top) * sy - HM_MARGIN_TOP;
-    const col = Math.floor(mx / HM_CELL), row = Math.floor(my / HM_CELL);
-    if (row < 0 || row >= HM_ROWS || col < 0 || col >= HM_COLS) return null;
-    return {row, col};
-  }
+  wrap.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    _mvDragging = true;
+    _mvDragStartX = e.clientX; _mvDragStartY = e.clientY;
+    _mvDragOffX = _mvOffsetX; _mvDragOffY = _mvOffsetY;
+  });
 
-  canvas.addEventListener('mousemove', function(e) {
-    const c = cellFromEvent(e);
-    _hmHoverCell = c;
-    if (!c || !_heatmapData) { tooltip.style.display = 'none'; return; }
+  window.addEventListener('mousemove', function(e) {
+    if (_mvDragging) {
+      _mvOffsetX = _mvDragOffX + (e.clientX - _mvDragStartX);
+      _mvOffsetY = _mvDragOffY + (e.clientY - _mvDragStartY);
+    }
+  });
+
+  window.addEventListener('mouseup', function() { _mvDragging = false; });
+
+  wrap.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    const rect = wrap.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const newScale = Math.max(0.1, Math.min(10, _mvScale * factor));
+    _mvOffsetX = cx - (cx - _mvOffsetX) * (newScale / _mvScale);
+    _mvOffsetY = cy - (cy - _mvOffsetY) * (newScale / _mvScale);
+    _mvScale = newScale;
+  }, {passive: false});
+
+  wrap.addEventListener('mousemove', function(e) {
+    if (_mvDragging) { tooltip.style.display = 'none'; return; }
+    if (!_mosaicInfo || !_heatmapData) { tooltip.style.display = 'none'; return; }
+
+    const rect = wrap.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    // Convert screen to mosaic coords
+    const mx = (px - _mvOffsetX) / _mvScale;
+    const my = (py - _mvOffsetY) / _mvScale;
+
+    const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
+    const col = Math.floor(mx / cellPx), row = Math.floor(my / cellPx);
     const cg = _heatmapData;
-    const cost = cg.grid ? cg.grid[c.row][c.col] : '?';
-    const klass = cg.classifications ? cg.classifications[c.row][c.col] : '?';
-    const surv = cg.coverage ? cg.coverage[c.row][c.col] : false;
-    const pass = cg.pass_data ? cg.pass_data[c.row][c.col] : 0;
-    const colLabel = COL_LABELS[c.col];
-    const rowLabel = c.row + 1;
-    tooltip.innerHTML = surv
-      ? `Cell <b>${colLabel}${rowLabel}</b> | Cost: ${cost} (${klass}) | Pass: ${pass}`
-      : `Cell <b>${colLabel}${rowLabel}</b> | <span style="color:#6b7280">UNSURVEYED</span>`;
-    tooltip.style.display = 'block';
-    // Position near cursor
-    const rect = canvas.getBoundingClientRect();
-    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-    tooltip.style.top  = (e.clientY - rect.top - 24) + 'px';
-  });
+    const grid = cg.grid || [];
+    const cls = cg.classifications || [];
+    const coverage = cg.coverage || [];
 
-  canvas.addEventListener('mouseleave', function() {
-    _hmHoverCell = null;
-    tooltip.style.display = 'none';
-  });
-
-  canvas.addEventListener('click', function(e) {
-    const c = cellFromEvent(e);
-    if (!c) return;
-    const fb = el('plan-routes-feedback');
-
-    if (_heatmapClickState === 0) {
-      setRouteStart(c.row, c.col);
-      _heatmapClickState = 1;
-      fb.textContent = `Landing(L) set to ${COL_LABELS[c.col]}${c.row+1} — click Target`;
-      fb.style.color = 'var(--green)';
-    } else if (_heatmapClickState === 1) {
-      setRouteEnd(c.row, c.col);
-      _heatmapClickState = 2;
-      fb.textContent = `Target(T) set to ${COL_LABELS[c.col]}${c.row+1} — click to reset`;
-      fb.style.color = 'var(--red)';
-      planRoutes(null); // auto-plan
+    if (row >= 0 && row < grid.length && col >= 0 && grid[row] && col < grid[row].length) {
+      const cost = grid[row][col];
+      const klass = cls[row] ? cls[row][col] : '?';
+      const surv = coverage[row] ? coverage[row][col] : false;
+      tooltip.innerHTML = surv
+        ? `Grid (${row},${col}) | Cost: ${cost} (${klass}) | Mosaic: ${Math.round(mx)},${Math.round(my)}`
+        : `Grid (${row},${col}) | <span style="color:#6b7280">UNSURVEYED</span>`;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (px + 12) + 'px';
+      tooltip.style.top = (py - 24) + 'px';
     } else {
-      _heatmapClickState = 0;
-      fb.textContent = 'Reset — click to set Landing(L)';
-      fb.style.color = 'var(--text-dim)';
+      tooltip.style.display = 'none';
+    }
+  });
+
+  wrap.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
+
+  wrap.addEventListener('click', function(e) {
+    if (!_mosaicClickMode) return;
+    const rect = wrap.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const mx = (px - _mvOffsetX) / _mvScale;
+    const my = (py - _mvOffsetY) / _mvScale;
+
+    const fb = el('plan-routes-feedback');
+    if (_mosaicClickMode === 'landing') {
+      _routeStartMosaic = [mx, my];
+      fb.textContent = `Landing(L) set at (${Math.round(mx)}, ${Math.round(my)})`;
+      fb.style.color = 'var(--green)';
+      _mosaicClickMode = null;
+      el('btn-set-landing').classList.remove('active-mode');
+    } else if (_mosaicClickMode === 'target') {
+      _routeEndMosaic = [mx, my];
+      fb.textContent = `Target(T) set at (${Math.round(mx)}, ${Math.round(my)}) — auto-planning...`;
+      fb.style.color = 'var(--red)';
+      _mosaicClickMode = null;
+      el('btn-set-target').classList.remove('active-mode');
+      planRoutes(null); // auto-plan when both are set
     }
   });
 })();
 
-// Start animation loop
-requestAnimationFrame(hmDraw);
+// ─── Mosaic data polling ─────────────────────────────────────────────────────
+async function pollCostHeatmap() {
+  // Poll mosaic info
+  try {
+    const r = await fetch('/api/mosaic_info');
+    if (r.ok) {
+      const d = await r.json();
+      _mosaicInfo = d;
+      el('mosaic-count-badge').textContent = `${d.image_count} IMAGE${d.image_count !== 1 ? 'S' : ''}`;
 
-// ─── Quadrant summary ────────────────────────────────────────────────────────
+      // Reload mosaic image if count changed
+      if (d.image_count > 0 && d.image_count !== _mosaicLastCount) {
+        _mosaicLastCount = d.image_count;
+        const img = new Image();
+        img.onload = function() {
+          _mosaicImg = img;
+          if (_mosaicLastCount === 1) mosaicFit(); // auto-fit on first image
+        };
+        img.src = '/api/mosaic?t=' + Date.now();
+      }
+    }
+  } catch(e) {}
+
+  // Poll cost grid
+  try {
+    const r = await fetch('/api/cost_grid');
+    if (r.ok) {
+      const d = await r.json();
+      _heatmapData = d;
+      renderQuadrantSummary(d);
+    }
+  } catch(e) {}
+
+  // Poll routes
+  try {
+    const r2 = await fetch('/api/routes');
+    if (r2.ok) {
+      const rd = await r2.json();
+      _mosaicRouteData = rd;
+      _lastRouteData = rd;
+    }
+  } catch(e) {}
+}
+
+// Start animation loop
+requestAnimationFrame(mosaicDraw);
+
+// ─── Quadrant summary (dynamic grid) ─────────────────────────────────────────
 function renderQuadrantSummary(data) {
   const grid = data.grid || [];
   const cls  = data.classifications || [];
+  const rows = grid.length;
+  const cols = rows > 0 ? grid[0].length : 0;
+  if (rows === 0 || cols === 0) return;
+
+  const midR = Math.floor(rows / 2), midC = Math.floor(cols / 2);
   const quads = [
-    { name: 'NW', rMin:0,rMax:3, cMin:0,cMax:3 },
-    { name: 'NE', rMin:0,rMax:3, cMin:4,cMax:7 },
-    { name: 'SW', rMin:4,rMax:7, cMin:0,cMax:3 },
-    { name: 'SE', rMin:4,rMax:7, cMin:4,cMax:7 },
+    { name: 'NW', rMin:0, rMax:midR-1, cMin:0, cMax:midC-1 },
+    { name: 'NE', rMin:0, rMax:midR-1, cMin:midC, cMax:cols-1 },
+    { name: 'SW', rMin:midR, rMax:rows-1, cMin:0, cMax:midC-1 },
+    { name: 'SE', rMin:midR, rMax:rows-1, cMin:midC, cMax:cols-1 },
   ];
   const tbody = el('quad-table-body');
   tbody.innerHTML = '';

@@ -61,7 +61,8 @@ class HazardClassifier:
         image_path: str,
         shadow_mask: np.ndarray,
         shadow_percentage: float,
-        grid_cell: tuple,
+        grid_cell: tuple = None,
+        mosaic_bbox: tuple = None,
     ) -> dict:
         """
         Classify a single image (= one grid cell) into a hazard class
@@ -113,6 +114,7 @@ class HazardClassifier:
             "hazard_class": hazard_class,
             "cost": cost,
             "grid_cell": grid_cell,
+            "mosaic_bbox": mosaic_bbox,
             "hazard_map_path": map_path,
             "confidence": round(confidence, 3),
             "details": features,
@@ -405,32 +407,46 @@ def save_cost_grid_json(
     """Save the full cost grid, classifications, and confidences as JSON.
 
     Args:
-        cost_grid:       numpy int array (GRID_ROWS x GRID_COLS)
+        cost_grid:       numpy int array (rows x cols) — dimensions are dynamic
         hazard_grid:     list of lists of class strings
         image_index:     dict from pipeline image_index (optional, for pass_data)
-        change_cells:    list of [r,c] cells with changes (optional)
-        confidence_grid: numpy float array (GRID_ROWS x GRID_COLS) or None
+        change_cells:    list of [r,c] cells or mosaic bboxes with changes (optional)
+        confidence_grid: numpy float array (rows x cols) or None
     """
     rows, cols = cost_grid.shape
     grid = cost_grid.tolist()
     classifications = [[hazard_grid[r][c] for c in range(cols)] for r in range(rows)]
 
-    # coverage: True if the cell has been surveyed
+    # coverage: derive from confidence grid (> 0 means surveyed) or cost grid
     coverage = [[False] * cols for _ in range(rows)]
     pass_data = [[0] * cols for _ in range(rows)]
 
+    if confidence_grid is not None:
+        for r in range(rows):
+            for c in range(cols):
+                if float(confidence_grid[r][c]) > 0:
+                    coverage[r][c] = True
+
+    # Extract pass data from image index (now keyed by filename)
     if image_index:
         for key, entries in image_index.items():
-            parts = key.split(",")
-            if len(parts) == 2:
-                r, c = int(parts[0]), int(parts[1])
-                if 0 <= r < rows and 0 <= c < cols:
-                    coverage[r][c] = True
-                    if entries:
-                        pass_data[r][c] = max(e.get("pass", 0) for e in entries)
+            if entries:
+                max_pass = max(e.get("pass", 0) for e in entries)
+                # Find the grid cell for this entry from mosaic_bbox
+                for entry in entries:
+                    bbox = entry.get("mosaic_bbox")
+                    if bbox:
+                        cell_px = config.MOSAIC_GRID_CELL_PX
+                        r = int((bbox[1] + bbox[3] / 2) // cell_px)
+                        c = int((bbox[0] + bbox[2] / 2) // cell_px)
+                        if 0 <= r < rows and 0 <= c < cols:
+                            coverage[r][c] = True
+                            pass_data[r][c] = max(pass_data[r][c], max_pass)
 
     data = {
         "grid": grid,
+        "rows": rows,
+        "cols": cols,
         "classifications": classifications,
         "coverage": coverage,
         "pass_data": pass_data,

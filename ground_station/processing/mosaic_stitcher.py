@@ -153,7 +153,7 @@ class MosaicStitcher:
         if desc is not None and len(kp_pts) >= 5:
             # If IMU yaw is available, use it to estimate initial rotation
             initial_angle = None
-            if imu and "yaw_deg" in imu:
+            if imu and imu.get("yaw_deg") is not None:
                 initial_angle = float(imu["yaw_deg"])
 
             for entry in self._entries:

@@ -8,37 +8,26 @@
 /* ══ RESET ════════════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
+/* TAB_REWRITE_MARKER */
 body {
-  background: #0a0e17;
-  color: #e0e0e0;
+  background: #0a0e17; color: #e0e0e0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  line-height: 1.4;
-  overflow-x: hidden;
+  font-size: 13px; line-height: 1.4; overflow-x: hidden;
 }
 :root {
-  --bg:    #0a0e17;
-  --panel: #141a26;
-  --border:#3a3f4b;
-  --cyan:  #00d4ff;
-  --green: #00ff88;
-  --amber: #ffaa00;
-  --red:   #ff4444;
-  --dim:   #888888;
-  --txt:   #e0e0e0;
-  --bright:#ffffff;
-  --mono:  Consolas, 'Courier New', monospace;
+  --bg: #0a0e17; --panel: #141a26; --border: #3a3f4b;
+  --cyan: #00d4ff; --green: #00ff88; --amber: #ffaa00;
+  --red: #ff4444; --dim: #888888; --txt: #e0e0e0; --bright: #ffffff;
+  --mono: Consolas, 'Courier New', monospace;
 }
-
-/* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--border); }
 ::-webkit-scrollbar-thumb { background: #5a6070; }
 
-/* ══ TOP BAR ══════════════════════════════════════════════════════════════════ */
+/* ══ TOP BAR ══ */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-  height: 50px; background: var(--panel); border-bottom: 1px solid var(--border);
+  height: 48px; background: var(--panel); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; padding: 0 16px; gap: 12px;
 }
 #topbar .brand {
@@ -48,32 +37,44 @@ body {
 #topbar .brand small {
   font-size: 9px; color: var(--dim); font-weight: 400; letter-spacing: 0.04em; margin-left: 8px;
 }
-.tb-center {
-  display: flex; align-items: center; gap: 16px; margin-left: auto;
-}
+.tb-center { display: flex; align-items: center; gap: 16px; margin-left: auto; }
 #mc-state-value {
   font-family: var(--mono); font-size: 22px; font-weight: 700;
   letter-spacing: 0.06em; color: var(--dim); transition: color 0.3s;
 }
-#mc-pass-value {
-  font-family: var(--mono); font-size: 14px; color: var(--bright);
-}
+#mc-pass-value { font-family: var(--mono); font-size: 14px; color: var(--bright); }
 .tb-label { font-family: var(--mono); font-size: 8px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
-.tb-controls {
-  display: flex; align-items: center; gap: 6px; margin-left: auto;
-}
+.tb-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .tb-div { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 
-/* ── Buttons (global) ─────────────────────────────────────────────────────── */
+/* ══ TAB BAR ══ */
+#tabbar {
+  position: fixed; top: 48px; left: 0; right: 0; z-index: 999;
+  height: 36px; background: #0d1220; border-bottom: 1px solid var(--border);
+  display: flex; align-items: stretch; padding: 0 16px; gap: 0;
+}
+.tab-btn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--dim); background: transparent;
+  border: none; border-bottom: 2px solid transparent;
+  padding: 0 20px; cursor: pointer; transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--txt); background: rgba(0,212,255,0.04); border: none; border-bottom: 2px solid transparent; box-shadow: none; }
+.tab-btn.active { color: var(--cyan); border-bottom: 2px solid var(--cyan); background: rgba(0,212,255,0.06); }
+
+/* ══ CONTENT ══ */
+#content { margin-top: 84px; padding: 16px; min-height: calc(100vh - 84px); }
+.tab-page { display: none; }
+.tab-page.active { display: block; }
+
+/* ── Buttons (global) ── */
 button, .btn {
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
   text-transform: uppercase; cursor: pointer;
   background: var(--panel); border: 1px solid var(--border); color: var(--txt);
   padding: 6px 12px; transition: all 0.15s; white-space: nowrap;
 }
-button:hover, .btn:hover {
-  border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3);
-}
+button:hover, .btn:hover { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3); }
 button:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none !important; border-color: var(--border) !important; }
 button.ok { border-color: var(--green) !important; color: var(--green) !important; }
 button.fail { border-color: var(--red) !important; color: var(--red) !important; }
@@ -90,14 +91,14 @@ button.active-end   { border-color: var(--red);   color: var(--red);   backgroun
 .btn-recalc:hover { box-shadow: 0 0 12px rgba(0,212,255,0.5); }
 .btn-recalc:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── Inputs ───────────────────────────────────────────────────────────────── */
+/* ── Inputs ── */
 input[type=number], input[type=text] {
   font-family: var(--mono); font-size: 11px; color: var(--bright);
   background: var(--bg); border: 1px solid var(--border); padding: 4px 6px; width: 40px;
 }
 input.active-input { border-color: var(--cyan); }
 
-/* ── Status dots ──────────────────────────────────────────────────────────── */
+/* ── Status dots ── */
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
 .dot-green { background: var(--green); }
 .dot-amber { background: var(--amber); }
@@ -107,7 +108,7 @@ input.active-input { border-color: var(--cyan); }
 #conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 4px; }
 #conn-dot.live { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
 
-/* ── MC bar elements ──────────────────────────────────────────────────────── */
+/* ── MC bar ── */
 #mc-feedback {
   font-family: var(--mono); font-size: 10px; max-width: 180px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -118,28 +119,11 @@ input.active-input { border-color: var(--cyan); }
 #mc-connect-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
 #mc-connect-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
-/* ══ LAYOUT ═══════════════════════════════════════════════════════════════════ */
-#main {
-  margin-top: 50px; display: flex; min-height: calc(100vh - 50px);
-}
-#col-left {
-  width: 60%; min-width: 600px; padding: 12px;
-  display: flex; flex-direction: column; gap: 12px;
-  border-right: 1px solid var(--border);
-}
-#col-right {
-  width: 40%; padding: 12px;
-  display: flex; flex-direction: column; gap: 12px;
-  overflow-y: auto;
-}
-
-/* ── Panels ───────────────────────────────────────────────────────────────── */
-.pnl {
-  background: var(--panel); border: 1px solid var(--border);
-}
+/* ── Panels ── */
+.pnl { background: var(--panel); border: 1px solid var(--border); margin-bottom: 12px; }
 .pnl-hdr {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; border-bottom: 1px solid var(--border);
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
 }
 .pnl-title {
   font-family: var(--mono); font-size: 10px; color: var(--dim);
@@ -150,20 +134,34 @@ input.active-input { border-color: var(--cyan); }
   padding: 2px 8px; border: 1px solid var(--border); color: var(--dim);
 }
 .pnl-badge.core { border-color: var(--amber); color: var(--amber); }
-.pnl-body { padding: 8px; }
+.pnl-badge.green { border-color: var(--green); color: var(--green); }
+.pnl-body { padding: 12px; }
 
-/* ── KV rows ──────────────────────────────────────────────────────────────── */
-.kv { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #1a2030; }
+/* ── Grid layouts ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+/* ── KV rows ── */
+.kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1a2030; }
+.kv:last-child { border-bottom: none; }
 .kv .k { color: var(--dim); font-family: var(--mono); font-size: 11px; }
 .kv .v { color: var(--bright); font-family: var(--mono); font-size: 11px; text-align: right; }
 .kv .v.warn  { color: var(--amber); }
 .kv .v.alert { color: var(--red); }
 
-/* ── Progress bar ─────────────────────────────────────────────────────────── */
+/* ── Progress bar ── */
 .prog-track { background: var(--border); height: 6px; width: 100%; position: relative; }
 .prog-fill  { height: 100%; background: var(--cyan); transition: width 0.5s; }
 
-/* ══ COST HEATMAP (centerpiece) ═══════════════════════════════════════════════ */
+/* ── Stat cards (Overview) ── */
+.stat-card {
+  background: #0d1220; border: 1px solid var(--border); padding: 12px; text-align: center;
+}
+.stat-num { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--bright); }
+.stat-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-top: 4px; }
+
+/* ══ COST HEATMAP ══ */
 #heatmap-section { flex: 0 0 auto; }
 #heatmap-wrap { position: relative; display: inline-block; }
 #cost-heatmap-canvas { display: block; cursor: crosshair; background: var(--bg); }
@@ -180,7 +178,7 @@ input.active-input { border-color: var(--cyan); }
 .hl-item { display: flex; align-items: center; gap: 3px; }
 .hl-swatch { display: inline-block; width: 10px; height: 10px; }
 
-/* ── Route endpoint inputs ────────────────────────────────────────────────── */
+/* ── Route endpoints ── */
 .ep-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ep-label { font-family: var(--mono); font-size: 10px; color: var(--dim); }
 .ep-label.start { color: var(--green); }
@@ -189,7 +187,7 @@ input.active-input { border-color: var(--cyan); }
 .ep-input.start-input { border-color: rgba(0,255,136,0.3); }
 .ep-input.end-input   { border-color: rgba(255,68,68,0.3); }
 
-/* ── Route cards ──────────────────────────────────────────────────────────── */
+/* ── Route cards ── */
 .route-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .route-card {
   flex: 1; min-width: 170px; background: var(--panel); border: 1px solid var(--border);
@@ -222,7 +220,7 @@ input.active-input { border-color: var(--cyan); }
 .risk-MODERATE { background: #332200; color: var(--amber); border: 1px solid var(--amber); }
 .risk-HIGH     { background: #330000; color: var(--red);   border: 1px solid var(--red); }
 
-/* ── Constraint sliders ───────────────────────────────────────────────────── */
+/* ── Constraint sliders ── */
 .cst-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .cst-row label { font-size: 11px; color: var(--dim); min-width: 140px; }
 .cst-row input[type=range] {
@@ -240,7 +238,7 @@ input.active-input { border-color: var(--cyan); }
 }
 .cst-row .cv { font-family: var(--mono); font-size: 11px; color: var(--cyan); min-width: 28px; text-align: right; }
 
-/* ══ CHANGE DETECTION SLIDER ══════════════════════════════════════════════════ */
+/* ══ CHANGE DETECTION SLIDER ══ */
 .cs-wrap { position: relative; overflow: hidden; width: 100%; background: var(--bg); }
 .cs-wrap .cs-before, .cs-wrap .cs-after { display: block; width: 100%; height: auto; }
 .cs-wrap .cs-before { position: relative; z-index: 1; }
@@ -290,7 +288,7 @@ input.active-input { border-color: var(--cyan); }
 .change-event-card .ce-conf { margin-left: auto; }
 .change-warning { background: #332200; border: 1px solid var(--amber); padding: 6px 10px; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--amber); }
 
-/* ══ COVERAGE GRID ════════════════════════════════════════════════════════════ */
+/* ══ COVERAGE GRID ══ */
 #coverage-canvas { display: block; width: 100%; background: var(--bg); }
 .cov-tl-seg {
   display: flex; align-items: center; justify-content: center;
@@ -299,7 +297,7 @@ input.active-input { border-color: var(--cyan); }
 .cov-tl-seg.active { background: #004422 !important; }
 .cov-tl-seg.active span { color: var(--green); }
 
-/* ── Images ───────────────────────────────────────────────────────────────── */
+/* ── Images ── */
 .map-img { display: none; width: 100%; border: 1px solid var(--border); }
 .img-placeholder {
   width: 100%; min-height: 60px; background: var(--panel); border: 1px solid var(--border);
@@ -307,14 +305,12 @@ input.active-input { border-color: var(--cyan); }
   color: var(--dim); font-size: 11px; font-family: var(--mono);
 }
 
-/* ── Shadow summary ───────────────────────────────────────────────────────── */
+/* ── Shadow / Quad ── */
 .shadow-summary {
   font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 8px;
   background: var(--panel); border: 1px solid var(--border);
 }
 .shadow-summary b { color: var(--bright); }
-
-/* ── Quad table ───────────────────────────────────────────────────────────── */
 .quad-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
 .quad-table th {
   text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim);
@@ -323,29 +319,10 @@ input.active-input { border-color: var(--cyan); }
 .quad-table td { padding: 4px 6px; border-bottom: 1px solid #1a2030; }
 .quad-table tr:nth-child(even) td { background: #0f1520; }
 
-/* ══ BOTTOM COLLAPSIBLE SECTIONS ══════════════════════════════════════════════ */
-#bottom { padding: 0 12px 12px; }
-.collapse-section { margin-top: 8px; }
-.collapse-hdr {
-  display: flex; align-items: center; gap: 6px; cursor: pointer;
-  padding: 6px 10px; background: var(--panel); border: 1px solid var(--border);
-  user-select: none;
-}
-.collapse-hdr .arrow { font-size: 10px; color: var(--dim); transition: transform 0.2s; }
-.collapse-hdr .arrow.open { transform: rotate(90deg); }
-.collapse-hdr .c-title { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
-.collapse-hdr .c-badge { margin-left: auto; font-family: var(--mono); font-size: 9px; padding: 1px 6px; border: 1px solid var(--border); color: var(--dim); }
-.collapse-body { display: none; border: 1px solid var(--border); border-top: none; background: var(--panel); }
-.collapse-body.open { display: block; }
-
-/* ── Telemetry horizontal layout ──────────────────────────────────────────── */
-.telem-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; padding: 8px;
-}
-.telem-group { }
+/* ── Telemetry ── */
 .telem-group-title { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 4px; }
 
-/* ── Quality table ────────────────────────────────────────────────────────── */
+/* ── Quality table ── */
 .q-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
 .q-table th { text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim); font-weight: 400; text-transform: uppercase; }
 .q-table td { padding: 3px 6px; border-bottom: 1px solid #1a2030; }
@@ -353,24 +330,24 @@ input.active-input { border-color: var(--cyan); }
 .pass-ok   { color: var(--green); }
 .pass-fail { color: var(--red); }
 
-/* ── Event log ────────────────────────────────────────────────────────────── */
-#event-log { max-height: 200px; overflow-y: auto; padding: 6px 8px; font-family: var(--mono); font-size: 10px; line-height: 1.6; }
+/* ── Event log ── */
+#event-log { max-height: 400px; overflow-y: auto; padding: 6px 8px; font-family: var(--mono); font-size: 10px; line-height: 1.6; }
 #event-log .line-err  { color: var(--red); }
 #event-log .line-warn { color: var(--amber); }
 #event-log .line-info { color: var(--dim); }
 
-/* ── Command panel ────────────────────────────────────────────────────────── */
+/* ── Command panel ── */
 .cmd-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .cmd-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; min-width: 80px; }
 .cmd-input { width: 120px !important; font-size: 10px !important; }
 
-/* ── Route warning ────────────────────────────────────────────────────────── */
+/* ── Route warning ── */
 #route-change-warning {
   display: none; background: #332200; border: 1px solid var(--amber);
   padding: 6px 10px; margin-bottom: 6px; font-family: var(--mono); font-size: 10px; color: var(--amber);
 }
 
-/* ── LLM bar ──────────────────────────────────────────────────────────────── */
+/* ── LLM bar ── */
 #llm-bar {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   background: var(--panel); border: 1px solid var(--border); margin-top: 8px;
@@ -378,16 +355,14 @@ input.active-input { border-color: var(--cyan); }
 #llm-input { flex: 1; width: auto !important; padding: 6px 8px !important; font-size: 11px !important; }
 #llm-response { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; padding: 4px 8px; min-height: 18px; }
 
-/* ── Misc ─────────────────────────────────────────────────────────────────── */
+/* ── Misc ── */
 .note { font-family: var(--mono); font-size: 9px; color: var(--dim); }
 .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- TOP BAR                                                                   -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ══ TOP BAR ══ -->
 <div id="topbar">
   <div class="brand">MURALTZ GCS <small>ARTEMIS LUNAR NAVIGATOR &middot; MIT BWSI 2025-2026</small></div>
   <span id="conn-dot"></span><span id="conn-label" style="font-family:var(--mono);font-size:9px;color:var(--dim);">OFFLINE</span>
@@ -425,24 +400,113 @@ input.active-input { border-color: var(--cyan); }
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- MAIN TWO-COLUMN AREA                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<div id="main">
+<!-- ══ TAB BAR ══ -->
+<div id="tabbar">
+  <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+  <button class="tab-btn" onclick="switchTab('terrain',this)">Terrain</button>
+  <button class="tab-btn" onclick="switchTab('detection',this)">Detection</button>
+  <button class="tab-btn" onclick="switchTab('changes',this)">Changes</button>
+  <button class="tab-btn" onclick="switchTab('telemetry',this)">Telemetry</button>
+  <button class="tab-btn" onclick="switchTab('log',this)">Log</button>
+</div>
 
-<!-- ─── LEFT COLUMN (60%): Heatmap + Routes + Constraints ────────────────── -->
-<div id="col-left">
+<!-- ══ CONTENT ══ -->
+<div id="content">
 
-  <!-- 1. COST HEATMAP — THE CENTERPIECE -->
+<!-- ═══ OVERVIEW TAB ═══ -->
+<div class="tab-page active" id="tab-overview">
+  <div class="grid-4" style="margin-bottom:12px;">
+    <div class="stat-card"><div class="stat-num" id="ov-images" style="color:var(--green);">--</div><div class="stat-label">Images Received</div></div>
+    <div class="stat-card"><div class="stat-num" id="ov-coverage" style="color:var(--cyan);">--</div><div class="stat-label">Coverage</div></div>
+    <div class="stat-card"><div class="stat-num" id="ov-changes" style="color:var(--amber);">--</div><div class="stat-label">Change Events</div></div>
+    <div class="stat-card"><div class="stat-num" id="ov-route" style="color:var(--green);">--</div><div class="stat-label">Route Length</div></div>
+  </div>
+  <div class="grid-2">
+    <div>
+      <!-- Mission Status -->
+      <div class="pnl">
+        <div class="pnl-hdr">
+          <span class="pnl-title">Mission Status</span>
+          <span class="pnl-badge" id="sat-state-badge">--</span>
+        </div>
+        <div class="pnl-body" style="padding:4px 8px;">
+          <div class="kv"><span class="k">State</span><span class="v" id="s-state">--</span></div>
+          <div class="kv"><span class="k">Pass</span><span class="v" id="s-pass">--</span></div>
+          <div class="kv"><span class="k">Images RX</span><span class="v" id="s-images">--</span></div>
+          <div class="kv"><span class="k">Corrupted</span><span class="v" id="s-corrupt">0</span></div>
+          <div class="kv"><span class="k">Coverage</span><span class="v" id="s-coverage">--</span></div>
+          <div class="kv"><span class="k">Route</span><span class="v" id="s-route">--</span></div>
+          <div class="kv"><span class="k">Changes</span><span class="v" id="s-changes">--</span></div>
+          <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:9px;">--</span></div>
+        </div>
+      </div>
+      <!-- Downlink -->
+      <div class="pnl">
+        <div class="pnl-hdr">
+          <span class="pnl-title">Downlink</span>
+          <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
+        </div>
+        <div class="pnl-body">
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
+            <span>Bytes Received</span>
+            <span id="dl-bytes">0 / 72,000</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="dl-bar" style="width:0%;"></div></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;font-family:var(--mono);font-size:10px;">
+            <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
+            <div><div style="color:var(--dim);">Total</div><div id="dl-total-bytes" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">bytes</div></div>
+            <div><div style="color:var(--dim);">Failed</div><div id="dl-failed" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">transfers</div></div>
+            <div><div style="color:var(--dim);">Cmds</div><div id="ul-cmds" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">acked</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <!-- Latest Image -->
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Latest Image</span></div>
+        <div class="pnl-body" style="padding:4px;">
+          <img id="img-latest" class="map-img" src="" alt="">
+          <div id="img-latest-ph" class="img-placeholder" style="min-height:80px;">NO DATA</div>
+        </div>
+      </div>
+      <!-- Coverage Grid -->
+      <div class="pnl">
+        <div class="pnl-hdr">
+          <span class="pnl-title">Coverage Grid</span>
+          <span class="pnl-badge" id="coverage-pct-badge">0%</span>
+        </div>
+        <div class="pnl-body">
+          <canvas id="coverage-canvas" width="340" height="340"></canvas>
+          <div id="cov-timeline" style="margin-top:6px;position:relative;height:20px;">
+            <div style="display:flex;height:14px;overflow:hidden;background:#1e2233;">
+              <div id="cov-tl-p1" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 1</span></div>
+              <div id="cov-tl-p2" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 2</span></div>
+              <div id="cov-tl-p3" class="cov-tl-seg" style="flex:1;background:#003322;"><span>Pass 3</span></div>
+            </div>
+            <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
+          </div>
+          <button style="width:100%;margin-top:4px;font-size:9px;" onclick="startCoverageAnim()">REPLAY</button>
+          <div class="note" style="margin-top:3px;">
+            <span class="dot dot-green"></span> Surveyed &nbsp;
+            <span class="dot dot-amber"></span> Change &nbsp;
+            <span class="dot dot-gray"></span> Unsurveyed
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TERRAIN TAB ═══ -->
+<div class="tab-page" id="tab-terrain">
   <div class="pnl" id="heatmap-section">
     <div class="pnl-hdr">
       <span class="pnl-title">Terrain Cost Map</span>
       <span class="pnl-badge" id="route-status-badge" style="border-color:var(--dim);color:var(--dim);">NO ROUTES</span>
     </div>
     <div class="pnl-body">
-      <!-- Route warning banner -->
       <div id="route-change-warning"></div>
-      <!-- Endpoint controls -->
       <div class="ep-row" style="margin-bottom:6px;">
         <span class="ep-label start">Landing (L):</span>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
@@ -457,9 +521,8 @@ input.active-input { border-color: var(--cyan); }
         <button onclick="planRoutes(this)" style="margin-left:8px;">PLAN ROUTES</button>
         <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
       </div>
-      <!-- Canvas -->
       <div id="heatmap-wrap">
-        <canvas id="cost-heatmap-canvas" width="564" height="560"></canvas>
+        <canvas id="cost-heatmap-canvas" width="660" height="656"></canvas>
         <div id="heatmap-tooltip"></div>
       </div>
       <div class="heatmap-legend" style="margin-top:4px;">
@@ -474,20 +537,16 @@ input.active-input { border-color: var(--cyan); }
     </div>
   </div>
 
-  <!-- 2. ROUTE COMPARISON CARDS -->
   <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">Route Comparison</span>
-    </div>
+    <div class="pnl-hdr"><span class="pnl-title">Route Comparison</span></div>
     <div class="pnl-body">
-      <div class="route-cards" id="route-cards"><!-- JS --></div>
+      <div class="route-cards" id="route-cards"></div>
       <div id="constrained-result"></div>
     </div>
   </div>
 
-  <!-- 3. CONSTRAINT SLIDERS + SELECTED ROUTE STATS side by side -->
-  <div style="display:flex;gap:12px;">
-    <div class="pnl" style="flex:1;">
+  <div class="grid-2">
+    <div class="pnl">
       <div class="pnl-hdr"><span class="pnl-title">Constraint Planner</span></div>
       <div class="pnl-body">
         <div class="cst-row">
@@ -503,7 +562,7 @@ input.active-input { border-color: var(--cyan); }
         <button class="btn-recalc" onclick="runConstrainedPlan(this)">RECALCULATE</button>
       </div>
     </div>
-    <div class="pnl" style="flex:1;">
+    <div class="pnl">
       <div class="pnl-hdr"><span class="pnl-title">Selected Route Stats</span></div>
       <div class="pnl-body">
         <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--dim);">No route data</div>
@@ -512,14 +571,51 @@ input.active-input { border-color: var(--cyan); }
   </div>
 </div>
 
-<!-- ─── RIGHT COLUMN (40%): Change + Coverage + Image + Shadow + DL ──────── -->
-<div id="col-right">
+<!-- ═══ DETECTION TAB ═══ -->
+<div class="tab-page" id="tab-detection">
+  <div class="grid-2">
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Shadow Analysis</span></div>
+        <div class="pnl-body" id="shadow-summary-body">
+          <div class="shadow-summary" id="shadow-summary-text">Shadow: -- | -- regions | Largest: --</div>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Hazard Density by Quadrant</span></div>
+        <div class="pnl-body" style="padding:4px;">
+          <table class="quad-table">
+            <thead><tr><th>Quadrant</th><th style="text-align:right;">Hazards</th><th style="text-align:right;">Shadow%</th><th>Risk</th></tr></thead>
+            <tbody id="quad-table-body"><tr><td colspan="4" style="color:var(--dim);text-align:center;">No data</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr">
+          <span class="pnl-title">ML Object Detection</span>
+          <span class="pnl-badge" id="yolo-model-badge" style="background:var(--panel);color:var(--dim);">--</span>
+        </div>
+        <div class="pnl-body">
+          <div id="yolo-summary" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px;">No detections yet</div>
+          <div id="yolo-image-wrap" style="position:relative;">
+            <img id="img-yolo" class="map-img" src="" alt="" style="display:none;">
+            <div id="img-yolo-ph" class="img-placeholder" style="min-height:60px;">NO ML DATA</div>
+          </div>
+          <div id="yolo-detections-list" style="margin-top:6px;font-family:var(--mono);font-size:10px;max-height:200px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-  <!-- 1. CHANGE DETECTION -->
+<!-- ═══ CHANGES TAB ═══ -->
+<div class="tab-page" id="tab-changes">
   <div class="pnl" style="border-color:rgba(255,149,0,0.4);">
     <div class="pnl-hdr" style="border-bottom-color:rgba(255,149,0,0.3);">
       <span class="pnl-title">Change Detection</span>
-      <span class="pnl-badge core">CORE</span>
+      <span class="pnl-badge core">CORE SCIENCE</span>
     </div>
     <div class="pnl-body">
       <div id="change-summary" style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:4px;display:none;"></div>
@@ -542,157 +638,46 @@ input.active-input { border-color: var(--cyan); }
       <div id="change-low-conf-warning" class="change-warning" style="display:none;"></div>
     </div>
   </div>
-
-  <!-- 2. COVERAGE GRID -->
-  <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">Coverage Grid</span>
-      <span class="pnl-badge" id="coverage-pct-badge">0%</span>
-    </div>
-    <div class="pnl-body">
-      <canvas id="coverage-canvas" width="340" height="340"></canvas>
-      <div id="cov-timeline" style="margin-top:6px;position:relative;height:20px;">
-        <div style="display:flex;height:14px;overflow:hidden;background:#1e2233;">
-          <div id="cov-tl-p1" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 1</span></div>
-          <div id="cov-tl-p2" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 2</span></div>
-          <div id="cov-tl-p3" class="cov-tl-seg" style="flex:1;background:#003322;"><span>Pass 3</span></div>
-        </div>
-        <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
-      </div>
-      <button style="width:100%;margin-top:4px;font-size:9px;" onclick="startCoverageAnim()">REPLAY</button>
-      <div class="note" style="margin-top:3px;">
-        <span class="dot dot-green"></span> Surveyed &nbsp;
-        <span class="dot dot-amber"></span> Change &nbsp;
-        <span class="dot dot-gray"></span> Unsurveyed
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. LATEST IMAGE -->
-  <div class="pnl">
-    <div class="pnl-hdr"><span class="pnl-title">Latest Image</span></div>
-    <div class="pnl-body" style="padding:4px;">
-      <img id="img-latest" class="map-img" src="" alt="">
-      <div id="img-latest-ph" class="img-placeholder" style="min-height:80px;">NO DATA</div>
-    </div>
-  </div>
-
-  <!-- 4. SHADOW SUMMARY -->
-  <div class="pnl">
-    <div class="pnl-hdr"><span class="pnl-title">Shadow Analysis</span></div>
-    <div class="pnl-body" id="shadow-summary-body">
-      <div class="shadow-summary" id="shadow-summary-text">Shadow: -- | -- regions | Largest: --</div>
-    </div>
-  </div>
-
-  <!-- 4b. ML OBJECT DETECTION -->
-  <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">ML Object Detection</span>
-      <span class="pnl-badge" id="yolo-model-badge" style="background:var(--panel);color:var(--dim);">--</span>
-    </div>
-    <div class="pnl-body">
-      <div id="yolo-summary" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px;">
-        No detections yet
-      </div>
-      <div id="yolo-image-wrap" style="position:relative;">
-        <img id="img-yolo" class="map-img" src="" alt="" style="display:none;">
-        <div id="img-yolo-ph" class="img-placeholder" style="min-height:60px;">NO ML DATA</div>
-      </div>
-      <div id="yolo-detections-list" style="margin-top:6px;font-family:var(--mono);font-size:10px;max-height:120px;overflow-y:auto;"></div>
-    </div>
-  </div>
-
-  <!-- 5. DOWNLINK PROGRESS -->
-  <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">Downlink</span>
-      <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
-    </div>
-    <div class="pnl-body">
-      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
-        <span>Bytes Received</span>
-        <span id="dl-bytes">0 / 72,000</span>
-      </div>
-      <div class="prog-track"><div class="prog-fill" id="dl-bar" style="width:0%;"></div></div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;font-family:var(--mono);font-size:10px;">
-        <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
-        <div><div style="color:var(--dim);">Total</div><div id="dl-total-bytes" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">bytes</div></div>
-        <div><div style="color:var(--dim);">Failed</div><div id="dl-failed" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">transfers</div></div>
-        <div><div style="color:var(--dim);">Cmds</div><div id="ul-cmds" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">acked</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 6. HAZARD QUADRANT SUMMARY -->
-  <div class="pnl">
-    <div class="pnl-hdr"><span class="pnl-title">Hazard Density by Quadrant</span></div>
-    <div class="pnl-body" style="padding:4px;">
-      <table class="quad-table">
-        <thead><tr><th>Quadrant</th><th style="text-align:right;">Hazards</th><th style="text-align:right;">Shadow%</th><th>Risk</th></tr></thead>
-        <tbody id="quad-table-body"><tr><td colspan="4" style="color:var(--dim);text-align:center;">No data</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- 7. MISSION STATUS (compact) -->
-  <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">Mission Status</span>
-      <span class="pnl-badge" id="sat-state-badge">--</span>
-    </div>
-    <div class="pnl-body" style="padding:4px 8px;">
-      <div class="kv"><span class="k">State</span><span class="v" id="s-state">--</span></div>
-      <div class="kv"><span class="k">Pass</span><span class="v" id="s-pass">--</span></div>
-      <div class="kv"><span class="k">Images RX</span><span class="v" id="s-images">--</span></div>
-      <div class="kv"><span class="k">Corrupted</span><span class="v" id="s-corrupt">0</span></div>
-      <div class="kv"><span class="k">Coverage</span><span class="v" id="s-coverage">--</span></div>
-      <div class="kv"><span class="k">Route</span><span class="v" id="s-route">--</span></div>
-      <div class="kv"><span class="k">Changes</span><span class="v" id="s-changes">--</span></div>
-      <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:9px;">--</span></div>
-    </div>
-  </div>
 </div>
-</div><!-- /main -->
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- BOTTOM: Collapsible Sections                                              -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<div id="bottom">
-
-  <!-- TELEMETRY -->
-  <div class="collapse-section">
-    <div class="collapse-hdr" onclick="toggleCollapse(this)">
-      <span class="arrow">&#9654;</span>
-      <span class="c-title">Telemetry</span>
-    </div>
-    <div class="collapse-body">
-      <div class="telem-grid">
-        <div class="telem-group">
-          <div class="telem-group-title">IMU / Attitude</div>
+<!-- ═══ TELEMETRY TAB ═══ -->
+<div class="tab-page" id="tab-telemetry">
+  <div class="grid-2">
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">IMU / Attitude</span></div>
+        <div class="pnl-body">
           <div class="kv"><span class="k">Sat State</span><span class="v" id="t-state">--</span></div>
           <div class="kv"><span class="k">Roll</span><span class="v" id="t-roll">--</span></div>
           <div class="kv"><span class="k">Pitch</span><span class="v" id="t-pitch">--</span></div>
           <div class="kv"><span class="k">Nadir Lock</span><span class="v" id="t-nadir">--</span></div>
         </div>
-        <div class="telem-group">
-          <div class="telem-group-title">System</div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">System</span></div>
+        <div class="pnl-body">
           <div class="kv"><span class="k">CPU Temp</span><span class="v" id="t-temp">--</span></div>
           <div class="kv"><span class="k">Storage</span><span class="v" id="t-storage">--</span></div>
           <div class="kv"><span class="k">Queue</span><span class="v" id="t-queue">--</span></div>
           <div class="kv"><span class="k">Uptime</span><span class="v" id="t-uptime">--</span></div>
         </div>
-        <div class="telem-group">
-          <div class="telem-group-title">Commands</div>
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <button onclick="sendCmd({cmd:'enter_safe_mode'},this)" style="width:100%;font-size:9px;border-color:var(--red);color:var(--red);">SAFE MODE</button>
-            <button onclick="sendCmd({cmd:'resume_normal'},this)" style="width:100%;font-size:9px;">RESUME</button>
-            <button onclick="sendCmd({cmd:'status_request'},this)" style="width:100%;font-size:9px;">STATUS REQ</button>
-            <button onclick="sendCmd({cmd:'retry_downlink'},this)" style="width:100%;font-size:9px;">RETRY DL</button>
+      </div>
+    </div>
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Commands</span></div>
+        <div class="pnl-body">
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button onclick="sendCmd({cmd:'enter_safe_mode'},this)" style="width:100%;padding:10px;border-color:var(--red);color:var(--red);">SAFE MODE</button>
+            <button onclick="sendCmd({cmd:'resume_normal'},this)" style="width:100%;padding:10px;">RESUME NORMAL</button>
+            <button onclick="sendCmd({cmd:'status_request'},this)" style="width:100%;padding:10px;">STATUS REQUEST</button>
+            <button onclick="sendCmd({cmd:'retry_downlink'},this)" style="width:100%;padding:10px;">RETRY DOWNLINK</button>
           </div>
         </div>
-        <div class="telem-group">
-          <div class="telem-group-title">Advanced</div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Advanced Commands</span></div>
+        <div class="pnl-body">
           <div class="cmd-row"><span class="cmd-label">Retransmit</span><input id="in-retransmit" class="cmd-input" type="text" placeholder="image_id"><button onclick="cmdRetransmit(this)" style="font-size:9px;">SEND</button></div>
           <div class="cmd-row"><span class="cmd-label">Priority Cell</span><input id="in-pri-r" type="number" min="0" max="7" value="0" style="width:28px;"><input id="in-pri-c" type="number" min="0" max="7" value="0" style="width:28px;"><button onclick="cmdPriorityCell(this)" style="font-size:9px;">SET</button></div>
           <div class="cmd-row"><span class="cmd-label">Exposure</span><input id="in-exposure" class="cmd-input" type="text" placeholder="e.g. 20000"><button onclick="cmdExposure(this)" style="font-size:9px;">SET</button></div>
@@ -700,16 +685,17 @@ input.active-input { border-color: var(--cyan); }
       </div>
     </div>
   </div>
+</div>
 
-  <!-- QUALITY LOG -->
-  <div class="collapse-section">
-    <div class="collapse-hdr" onclick="toggleCollapse(this)">
-      <span class="arrow">&#9654;</span>
-      <span class="c-title">Quality Log</span>
-      <span class="c-badge" id="q-count-badge">0 images</span>
+<!-- ═══ LOG TAB ═══ -->
+<div class="tab-page" id="tab-log">
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Quality Log</span>
+      <span class="pnl-badge" id="q-count-badge">0 images</span>
     </div>
-    <div class="collapse-body">
-      <div style="max-height:200px;overflow-y:auto;">
+    <div class="pnl-body" style="padding:4px;">
+      <div style="max-height:300px;overflow-y:auto;">
         <table class="q-table">
           <thead><tr><th>Filename</th><th>CubeSat Score</th><th>Ground OK</th><th>Notes</th><th>Status</th></tr></thead>
           <tbody id="q-table-body"><tr><td colspan="5" style="color:var(--dim);text-align:center;">No images received</td></tr></tbody>
@@ -718,19 +704,16 @@ input.active-input { border-color: var(--cyan); }
     </div>
   </div>
 
-  <!-- EVENT LOG -->
-  <div class="collapse-section">
-    <div class="collapse-hdr" onclick="toggleCollapse(this)">
-      <span class="arrow">&#9654;</span>
-      <span class="c-title">Event Log</span>
-      <span class="c-badge" id="log-count-badge">0 lines</span>
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Event Log</span>
+      <span class="pnl-badge" id="log-count-badge">0 lines</span>
     </div>
-    <div class="collapse-body">
+    <div class="pnl-body" style="padding:0;">
       <div id="event-log" style="white-space:pre-wrap;word-break:break-all;">No events yet</div>
     </div>
   </div>
 
-  <!-- LLM QUERY -->
   <div id="llm-bar">
     <span style="font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
     <input id="llm-input" type="text" placeholder="Ask about mission state (requires local ollama)" onkeydown="if(event.key==='Enter')sendLLM()">
@@ -739,7 +722,9 @@ input.active-input { border-color: var(--cyan); }
   <div id="llm-response"></div>
 </div>
 
-<!-- Hidden elements needed by JS but not displayed in new layout -->
+</div><!-- /content -->
+
+<!-- Hidden elements needed by JS -->
 <div style="display:none;">
   <img id="img-hazard" src="" alt="">
   <div id="img-hazard-ph"></div>
@@ -753,7 +738,15 @@ input.active-input { border-color: var(--cyan); }
 </div>
 
 <script>
-// ─── Collapse toggle ─────────────────────────────────────────────────────────
+// ─── Tab switching ───────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+// ─── Collapse toggle (kept for compatibility) ────────────────────────────────
 function toggleCollapse(hdr) {
   const arrow = hdr.querySelector('.arrow');
   const body = hdr.nextElementSibling;
@@ -894,6 +887,12 @@ async function pollStatus() {
 
     // ── Coverage badge ──
     el('coverage-pct-badge').textContent = cov.pct != null ? cov.pct + '%' : '0%';
+
+    // ── Overview stat cards ──
+    setText('ov-images', m.total_images_received ?? '--');
+    setText('ov-coverage', cov.pct != null ? cov.pct + '%' : '--');
+    setText('ov-changes', ch.total_events ?? '--');
+    setText('ov-route', route.path_length_cells ?? '--');
 
     // ── Change→Route impact check ──
     if (_lastRouteData) checkChangeRouteImpact(d, _lastRouteData);
@@ -1364,8 +1363,8 @@ async function planRoutes(btn) {
 const HM_ROWS = 8, HM_COLS = 8;
 const HM_MARGIN_LEFT = 24;   // space for row labels
 const HM_MARGIN_TOP  = 20;   // space for col labels
-const HM_SIZE = 540;         // grid drawing area (square)
-const HM_CELL = HM_SIZE / HM_COLS; // 67.5px per cell
+const HM_SIZE = 636;         // grid drawing area (square) — larger for tab layout
+const HM_CELL = HM_SIZE / HM_COLS; // ~79.5px per cell
 const HM_W = HM_MARGIN_LEFT + HM_SIZE;
 const HM_H = HM_MARGIN_TOP  + HM_SIZE;
 const COL_LABELS = 'ABCDEFGH';

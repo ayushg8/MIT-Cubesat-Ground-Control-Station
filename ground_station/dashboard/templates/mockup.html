@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MuraltZ GCS — Redesign Mockup</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #0a0e17; color: #e0e0e0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px; line-height: 1.4; overflow-x: hidden;
+}
+:root {
+  --bg: #0a0e17; --panel: #141a26; --border: #3a3f4b;
+  --cyan: #00d4ff; --green: #00ff88; --amber: #ffaa00;
+  --red: #ff4444; --dim: #888; --txt: #e0e0e0; --bright: #fff;
+  --mono: Consolas, 'Courier New', monospace;
+}
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--border); } ::-webkit-scrollbar-thumb { background: #5a6070; }
+
+/* ══ TOP BAR ══ */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  height: 48px; background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+}
+.brand { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--cyan); letter-spacing: 0.08em; }
+.brand small { font-size: 9px; color: var(--dim); font-weight: 400; margin-left: 8px; }
+.tb-sep { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+.tb-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+.conn-label { font-family: var(--mono); font-size: 9px; color: var(--cyan); }
+.tb-stat { text-align: center; }
+.tb-label { font-family: var(--mono); font-size: 8px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.tb-val { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--green); }
+.tb-val-sm { font-family: var(--mono); font-size: 14px; color: var(--bright); }
+button {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); color: var(--txt);
+  padding: 5px 10px; transition: all 0.15s;
+}
+button:hover { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3); }
+.btn-green { border-color: var(--green); color: var(--green); }
+.btn-red { border-color: var(--red); color: var(--red); }
+.btn-cyan { border-color: var(--cyan); color: var(--cyan); }
+
+/* ══ TAB BAR ══ */
+#tabbar {
+  position: fixed; top: 48px; left: 0; right: 0; z-index: 999;
+  height: 36px; background: #0d1220; border-bottom: 1px solid var(--border);
+  display: flex; align-items: stretch; padding: 0 16px; gap: 0;
+}
+.tab-btn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--dim); background: transparent;
+  border: none; border-bottom: 2px solid transparent;
+  padding: 0 20px; cursor: pointer; transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--txt); background: rgba(0,212,255,0.04); border: none; border-bottom: 2px solid transparent; box-shadow: none; }
+.tab-btn.active { color: var(--cyan); border-bottom: 2px solid var(--cyan); background: rgba(0,212,255,0.06); }
+
+/* ══ CONTENT ══ */
+#content { margin-top: 84px; padding: 16px; min-height: calc(100vh - 84px); }
+.tab-page { display: none; }
+.tab-page.active { display: block; }
+
+/* ── Panels ── */
+.pnl { background: var(--panel); border: 1px solid var(--border); margin-bottom: 12px; }
+.pnl-hdr {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.pnl-title { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.pnl-badge { margin-left: auto; font-family: var(--mono); font-size: 9px; padding: 2px 8px; border: 1px solid var(--border); color: var(--dim); }
+.pnl-badge.core { border-color: var(--amber); color: var(--amber); }
+.pnl-badge.green { border-color: var(--green); color: var(--green); }
+.pnl-badge.cyan { border-color: var(--cyan); color: var(--cyan); }
+.pnl-body { padding: 12px; }
+
+/* ── Grid layouts ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+/* ── KV rows ── */
+.kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1a2030; }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--dim); font-family: var(--mono); font-size: 11px; }
+.kv .v { color: var(--bright); font-family: var(--mono); font-size: 11px; text-align: right; }
+.kv .v.green { color: var(--green); }
+.kv .v.amber { color: var(--amber); }
+.kv .v.red { color: var(--red); }
+
+/* ── Progress bar ── */
+.prog-track { background: var(--border); height: 6px; width: 100%; }
+.prog-fill { height: 100%; background: var(--cyan); transition: width 0.5s; }
+
+/* ── Stat cards ── */
+.stat-card {
+  background: #0d1220; border: 1px solid var(--border); padding: 12px;
+  text-align: center;
+}
+.stat-num { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--bright); }
+.stat-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-top: 4px; }
+
+/* ── Heatmap placeholder ── */
+.heatmap-placeholder {
+  width: 100%; aspect-ratio: 1; background: #0d1220; border: 1px solid var(--border);
+  display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); gap: 1px;
+}
+.hm-cell {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 14px; color: rgba(255,255,255,0.3);
+}
+.hm-safe { background: rgba(0,255,136,0.5); }
+.hm-mod { background: rgba(255,170,0,0.5); }
+.hm-shadow { background: rgba(68,136,255,0.5); }
+.hm-hazard { background: rgba(255,68,68,0.5); }
+.hm-unsurv { background: #1e2233; }
+.hm-impass { background: #1a1a2e; }
+
+.heatmap-legend {
+  display: flex; gap: 12px; padding: 8px 0; font-family: var(--mono); font-size: 9px; color: var(--dim);
+}
+.hl-item { display: flex; align-items: center; gap: 4px; }
+.hl-swatch { width: 12px; height: 12px; }
+
+/* ── Route cards ── */
+.route-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); padding: 12px;
+}
+.rc-name { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.rc-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ── Image placeholder ── */
+.img-ph {
+  width: 100%; aspect-ratio: 4/3; background: #0d1220; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dim); font-family: var(--mono); font-size: 11px;
+}
+
+/* ── Coverage grid ── */
+.cov-grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+  gap: 2px; aspect-ratio: 1; width: 100%;
+}
+.cov-cell {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 8px; color: rgba(255,255,255,0.4);
+}
+.cov-yes { background: rgba(0,255,136,0.6); }
+.cov-no { background: #1e2233; }
+.cov-change { background: rgba(255,149,0,0.5); border: 1px solid var(--amber); }
+
+/* ── Change slider mockup ── */
+.change-mockup {
+  width: 100%; aspect-ratio: 16/9; background: #0d1220; border: 1px solid var(--border);
+  display: flex; position: relative; overflow: hidden;
+}
+.change-half { flex: 1; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; }
+.change-half.before { background: #0d1220; color: var(--dim); }
+.change-half.after { background: #1a1220; color: var(--amber); }
+.change-divider {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--cyan);
+}
+.change-handle {
+  position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--cyan); border: 2px solid var(--bg); transform: translate(-50%, -50%);
+}
+
+/* ── Tables ── */
+.data-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+.data-table th { text-align: left; padding: 6px 8px; background: #1a2030; color: var(--dim); font-weight: 400; text-transform: uppercase; }
+.data-table td { padding: 5px 8px; border-bottom: 1px solid #1a2030; }
+.data-table tr:nth-child(even) td { background: #0f1520; }
+
+/* ── Risk badges ── */
+.risk-badge { font-size: 9px; padding: 2px 6px; font-family: var(--mono); text-transform: uppercase; }
+.risk-LOW { background: #003322; color: var(--green); border: 1px solid var(--green); }
+.risk-MOD { background: #332200; color: var(--amber); border: 1px solid var(--amber); }
+.risk-HIGH { background: #330000; color: var(--red); border: 1px solid var(--red); }
+
+/* ── Telem cards ── */
+.telem-card { background: #0d1220; border: 1px solid var(--border); padding: 10px; }
+.telem-card-title { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.08em; }
+
+/* ── Command buttons ── */
+.cmd-grid { display: flex; flex-direction: column; gap: 6px; }
+.cmd-grid button { width: 100%; padding: 8px; font-size: 10px; }
+
+/* ── Event log ── */
+.log-box {
+  background: #0d1220; border: 1px solid var(--border); padding: 8px;
+  font-family: var(--mono); font-size: 10px; line-height: 1.7;
+  max-height: 300px; overflow-y: auto; color: var(--dim);
+}
+.log-err { color: var(--red); }
+.log-warn { color: var(--amber); }
+
+/* ── LLM bar ── */
+.llm-bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--border); margin-top: 12px;
+}
+.llm-bar input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  color: var(--bright); font-family: var(--mono); font-size: 11px; padding: 6px 8px;
+}
+
+/* ── Inputs ── */
+input[type=number] {
+  font-family: var(--mono); font-size: 11px; color: var(--bright);
+  background: var(--bg); border: 1px solid var(--border); padding: 4px 6px; width: 40px;
+}
+.ep-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.ep-label { font-family: var(--mono); font-size: 10px; }
+.ep-label.start { color: var(--green); }
+.ep-label.end { color: var(--red); }
+
+/* ── Slider inputs ── */
+.cst-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cst-row label { font-size: 11px; color: var(--dim); min-width: 140px; }
+.cst-row input[type=range] {
+  -webkit-appearance: none; flex: 1; height: 4px; background: var(--border);
+}
+.cst-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cyan); border: 2px solid var(--bg); cursor: pointer;
+}
+.cst-val { font-family: var(--mono); font-size: 11px; color: var(--cyan); min-width: 28px; text-align: right; }
+.btn-recalc {
+  width: 100%; padding: 8px; font-family: var(--mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;
+  background: var(--cyan); color: var(--bg); border: none; font-weight: 700;
+}
+
+/* ── Change event cards ── */
+.ce-card {
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red);
+  padding: 8px 12px; font-family: var(--mono); font-size: 11px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+}
+.ce-id { color: var(--red); font-weight: 700; }
+.ce-detail { color: var(--dim); }
+.ce-conf { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <span class="brand">MURALTZ GCS <small>ARTEMIS LUNAR NAVIGATOR &middot; MIT BWSI</small></span>
+  <span class="conn-dot"></span><span class="conn-label">LIVE</span>
+  <div class="tb-sep"></div>
+  <div class="tb-stat"><div class="tb-label">State</div><div class="tb-val">IMAGING</div></div>
+  <div class="tb-sep"></div>
+  <div class="tb-stat"><div class="tb-label">Pass</div><div class="tb-val-sm">2</div></div>
+  <div class="tb-right">
+    <button class="btn-green">&#9654; START PASS</button>
+    <button class="btn-red">&#9632; END PASS</button>
+    <div class="tb-sep"></div>
+    <button>FIND</button>
+    <div class="tb-sep"></div>
+    <button class="btn-red">NEW SESSION</button>
+    <button class="btn-cyan">EXPORT</button>
+  </div>
+</div>
+
+<!-- TAB BAR -->
+<div id="tabbar">
+  <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+  <button class="tab-btn" onclick="switchTab('terrain')">Terrain</button>
+  <button class="tab-btn" onclick="switchTab('detection')">Detection</button>
+  <button class="tab-btn" onclick="switchTab('changes')">Changes</button>
+  <button class="tab-btn" onclick="switchTab('telemetry')">Telemetry</button>
+  <button class="tab-btn" onclick="switchTab('log')">Log</button>
+</div>
+
+<!-- CONTENT -->
+<div id="content">
+
+<!-- ═══ OVERVIEW TAB ═══ -->
+<div class="tab-page active" id="tab-overview">
+  <!-- Top stat cards -->
+  <div class="grid-4" style="margin-bottom:12px;">
+    <div class="stat-card"><div class="stat-num" style="color:var(--green);">12</div><div class="stat-label">Images Received</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--cyan);">75%</div><div class="stat-label">Coverage</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--amber);">3</div><div class="stat-label">Change Events</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--green);">14</div><div class="stat-label">Route Length</div></div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Left: Mission Status + Downlink -->
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Mission Status</span><span class="pnl-badge green">ACTIVE</span></div>
+        <div class="pnl-body">
+          <div class="kv"><span class="k">State</span><span class="v green">IMAGING</span></div>
+          <div class="kv"><span class="k">Pass</span><span class="v">2</span></div>
+          <div class="kv"><span class="k">Images RX</span><span class="v">12</span></div>
+          <div class="kv"><span class="k">Corrupted</span><span class="v">0</span></div>
+          <div class="kv"><span class="k">Coverage</span><span class="v">48/64 (75%)</span></div>
+          <div class="kv"><span class="k">Route</span><span class="v green">found</span></div>
+          <div class="kv"><span class="k">Changes</span><span class="v amber">3 event(s) &middot; 4.2 cm&sup2;</span></div>
+          <div class="kv"><span class="k">Updated</span><span class="v" style="font-size:9px;">2026-03-15 21:47:38</span></div>
+        </div>
+      </div>
+
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Downlink</span><span class="pnl-badge">1200 B/s</span></div>
+        <div class="pnl-body">
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:6px;">
+            <span>Bytes Received</span><span>54,200 / 72,000</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:75%;"></div></div>
+          <div class="grid-4" style="margin-top:10px;">
+            <div style="text-align:center;"><div style="color:var(--dim);font-family:var(--mono);font-size:9px;">Rate</div><div style="color:var(--bright);font-family:var(--mono);">1200</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
+            <div style="text-align:center;"><div style="color:var(--dim);font-family:var(--mono);font-size:9px;">Total</div><div style="color:var(--bright);font-family:var(--mono);">54,200</div><div style="color:var(--dim);font-size:8px;">bytes</div></div>
+            <div style="text-align:center;"><div style="color:var(--dim);font-family:var(--mono);font-size:9px;">Failed</div><div style="color:var(--bright);font-family:var(--mono);">0</div><div style="color:var(--dim);font-size:8px;">transfers</div></div>
+            <div style="text-align:center;"><div style="color:var(--dim);font-family:var(--mono);font-size:9px;">Cmds</div><div style="color:var(--bright);font-family:var(--mono);">3/3</div><div style="color:var(--dim);font-size:8px;">acked</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Latest Image + Coverage -->
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Latest Image</span></div>
+        <div class="pnl-body" style="padding:4px;">
+          <div class="img-ph">Waiting for CubeSat image...</div>
+        </div>
+      </div>
+
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Coverage Grid</span><span class="pnl-badge green">75%</span></div>
+        <div class="pnl-body">
+          <div class="cov-grid">
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-change"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-change"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-change"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div>
+            <div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-yes"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div><div class="cov-cell cov-no"></div>
+          </div>
+          <div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:var(--dim);">
+            <span style="color:var(--green);">&#9632;</span> Surveyed &nbsp;
+            <span style="color:var(--amber);">&#9632;</span> Change &nbsp;
+            <span style="color:#1e2233;">&#9632;</span> Unsurveyed
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TERRAIN TAB ═══ -->
+<div class="tab-page" id="tab-terrain">
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">Terrain Cost Map</span>
+      <span class="pnl-badge green">SAFEST &middot; 14 cells</span>
+    </div>
+    <div class="pnl-body">
+      <div class="ep-row">
+        <span class="ep-label start">Landing (L):</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
+        <input type="number" value="0" style="width:36px;text-align:center;">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
+        <input type="number" value="0" style="width:36px;text-align:center;">
+        <span class="ep-label end" style="margin-left:12px;">Target (T):</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">R</span>
+        <input type="number" value="7" style="width:36px;text-align:center;">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">C</span>
+        <input type="number" value="7" style="width:36px;text-align:center;">
+        <button style="margin-left:8px;">PLAN ROUTES</button>
+      </div>
+      <div class="heatmap-placeholder" style="max-width:700px;">
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-mod"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-shadow"></div><div class="hm-cell hm-shadow"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-mod"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-hazard"></div><div class="hm-cell hm-hazard"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-mod"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-mod"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-hazard"></div><div class="hm-cell hm-impass">X</div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div>
+        <div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-safe"></div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div><div class="hm-cell hm-unsurv">?</div>
+      </div>
+      <div class="heatmap-legend">
+        <div class="hl-item"><span class="hl-swatch" style="background:rgba(0,255,136,0.6);"></span>Safe (1)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:rgba(255,170,0,0.6);"></span>Moderate (5)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:rgba(68,136,255,0.6);"></span>Shadow (15)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:rgba(255,68,68,0.6);"></span>Hazard (20)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid var(--red);"></span>Impassable</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurveyed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Route cards -->
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Route Comparison</span></div>
+    <div class="pnl-body">
+      <div class="grid-3">
+        <div class="route-card" style="border-left-color:#00ff88;">
+          <div class="rc-name"><span class="rc-dot" style="background:#00ff88;"></span>FASTEST ROUTE</div>
+          <div class="kv"><span class="k">Distance</span><span class="v">12 cells</span></div>
+          <div class="kv"><span class="k">Shadow</span><span class="v">8.2%</span></div>
+          <div class="kv"><span class="k">Hazards</span><span class="v">2 nearby</span></div>
+          <div class="kv"><span class="k">Risk</span><span class="v" style="color:var(--amber);font-weight:700;">MODERATE</span></div>
+          <div style="display:flex;gap:4px;margin-top:8px;"><button style="flex:1;font-size:8px;">SELECT</button><button style="flex:1;font-size:8px;">SHOW ONLY</button></div>
+        </div>
+        <div class="route-card" style="border-left-color:#4488ff;border-color:var(--cyan);box-shadow:0 0 6px rgba(0,212,255,0.2);">
+          <div class="rc-name"><span class="rc-dot" style="background:#4488ff;"></span>SAFEST ROUTE</div>
+          <div class="kv"><span class="k">Distance</span><span class="v">14 cells</span></div>
+          <div class="kv"><span class="k">Shadow</span><span class="v">2.1%</span></div>
+          <div class="kv"><span class="k">Hazards</span><span class="v">0 nearby</span></div>
+          <div class="kv"><span class="k">Risk</span><span class="v" style="color:var(--green);font-weight:700;">LOW</span></div>
+          <div style="display:flex;gap:4px;margin-top:8px;"><button style="flex:1;font-size:8px;border-color:var(--cyan);color:var(--cyan);">SELECTED</button><button style="flex:1;font-size:8px;">SHOW ONLY</button></div>
+        </div>
+        <div class="route-card" style="border-left-color:#ffaa00;">
+          <div class="rc-name"><span class="rc-dot" style="background:#ffaa00;"></span>BALANCED ROUTE</div>
+          <div class="kv"><span class="k">Distance</span><span class="v">13 cells</span></div>
+          <div class="kv"><span class="k">Shadow</span><span class="v">5.0%</span></div>
+          <div class="kv"><span class="k">Hazards</span><span class="v">1 nearby</span></div>
+          <div class="kv"><span class="k">Risk</span><span class="v" style="color:var(--green);font-weight:700;">LOW</span></div>
+          <div style="display:flex;gap:4px;margin-top:8px;"><button style="flex:1;font-size:8px;">SELECT</button><button style="flex:1;font-size:8px;">SHOW ONLY</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Constraints + Stats -->
+  <div class="grid-2">
+    <div class="pnl">
+      <div class="pnl-hdr"><span class="pnl-title">Constraint Planner</span></div>
+      <div class="pnl-body">
+        <div class="cst-row"><label>Max Shadow Exposure</label><input type="range" min="0" max="100" value="50"><span class="cst-val">50%</span></div>
+        <div class="cst-row"><label>Min Hazard Clearance</label><input type="range" min="0" max="3" value="1"><span class="cst-val">1</span></div>
+        <button class="btn-recalc">RECALCULATE</button>
+      </div>
+    </div>
+    <div class="pnl">
+      <div class="pnl-hdr"><span class="pnl-title">Selected Route Stats</span></div>
+      <div class="pnl-body">
+        <div class="kv"><span class="k">Route</span><span class="v">Safest</span></div>
+        <div class="kv"><span class="k">Landing &rarr; Target</span><span class="v">[0,0] &rarr; [7,7]</span></div>
+        <div class="kv"><span class="k">Distance</span><span class="v">14 cells / 140 cm</span></div>
+        <div class="kv"><span class="k">Shadow %</span><span class="v">2.1%</span></div>
+        <div class="kv"><span class="k">Hazards Near</span><span class="v">0</span></div>
+        <div class="kv"><span class="k">Risk</span><span class="v"><span class="risk-badge risk-LOW">LOW</span></span></div>
+        <div style="margin-top:8px;font-size:10px;color:var(--dim);">Suitable for surface expedition</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DETECTION TAB ═══ -->
+<div class="tab-page" id="tab-detection">
+  <div class="grid-2">
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Shadow Analysis</span></div>
+        <div class="pnl-body">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:8px;">
+            Shadow: <b style="color:var(--bright);">12.4%</b> | 3 shadow region(s) | Largest: 842 px | 1 dark object(s)
+          </div>
+          <div class="img-ph" style="aspect-ratio:4/3;">Shadow mask overlay</div>
+        </div>
+      </div>
+
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Hazard Density by Quadrant</span></div>
+        <div class="pnl-body" style="padding:4px;">
+          <table class="data-table">
+            <thead><tr><th>Quadrant</th><th style="text-align:right;">Hazards</th><th style="text-align:right;">Shadow%</th><th>Risk</th></tr></thead>
+            <tbody>
+              <tr><td>NW</td><td style="text-align:right;">0</td><td style="text-align:right;">6%</td><td><span class="risk-badge risk-LOW">LOW</span></td></tr>
+              <tr><td>NE</td><td style="text-align:right;">2</td><td style="text-align:right;">25%</td><td><span class="risk-badge risk-MOD">MODERATE</span></td></tr>
+              <tr><td>SW</td><td style="text-align:right;">1</td><td style="text-align:right;">0%</td><td><span class="risk-badge risk-MOD">MODERATE</span></td></tr>
+              <tr><td>SE</td><td style="text-align:right;">0</td><td style="text-align:right;">0%</td><td><span class="risk-badge risk-LOW">LOW</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr">
+          <span class="pnl-title">ML Object Detection</span>
+          <span class="pnl-badge cyan">LUNAR</span>
+        </div>
+        <div class="pnl-body">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px;">
+            <span style="color:var(--bright);">YOLO:</span> 2 crater(s), 1 boulder(s) | <span style="color:var(--bright);">CV Agreement:</span> 88%
+          </div>
+          <div class="img-ph" style="aspect-ratio:4/3;">YOLO annotated image</div>
+          <div style="margin-top:8px;font-family:var(--mono);font-size:10px;">
+            <div style="margin-bottom:4px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+              <span style="color:var(--cyan);">(2,3)</span> CV: <b>HAZARD</b> &rarr; Fused: <b style="color:var(--bright);">HAZARD</b> (92%) <span style="color:var(--green);">&#10003;</span> | ML: crater 87%
+            </div>
+            <div style="margin-bottom:4px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+              <span style="color:var(--cyan);">(2,4)</span> CV: <b>MODERATE</b> &rarr; Fused: <b style="color:var(--bright);">HAZARD</b> (78%) <span style="color:var(--red);">&#10007;</span> | ML: boulder 74%
+            </div>
+            <div>
+              <span style="color:var(--cyan);">(0,0)</span> CV: <b>SAFE</b> &rarr; Fused: <b style="color:var(--bright);">SAFE</b> (95%) <span style="color:var(--green);">&#10003;</span> | ML: none
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CHANGES TAB ═══ -->
+<div class="tab-page" id="tab-changes">
+  <div class="pnl" style="border-color:rgba(255,149,0,0.4);">
+    <div class="pnl-hdr" style="border-bottom-color:rgba(255,149,0,0.3);">
+      <span class="pnl-title">Change Detection</span>
+      <span class="pnl-badge core">CORE SCIENCE</span>
+    </div>
+    <div class="pnl-body">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:8px;">
+        3 change event(s) detected &middot; 4.2 cm&sup2; total &middot; largest: 2.1 cm&sup2;
+      </div>
+
+      <div style="display:flex;gap:4px;margin-bottom:8px;">
+        <button style="font-family:var(--mono);font-size:9px;padding:3px 10px;border-color:var(--red);color:var(--red);background:rgba(255,68,68,0.08);">Cell (1,3)</button>
+        <button style="font-family:var(--mono);font-size:9px;padding:3px 10px;">Cell (3,4)</button>
+        <button style="font-family:var(--mono);font-size:9px;padding:3px 10px;">Cell (5,5)</button>
+      </div>
+
+      <div class="change-mockup">
+        <div class="change-half before">BEFORE (Pass 1)</div>
+        <div class="change-half after">AFTER (Pass 2)</div>
+        <div class="change-divider"></div>
+        <div class="change-handle"></div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <div class="ce-card">
+          <span class="ce-id">&Delta;1</span>
+          <span>Cell (1,3)</span>
+          <span class="ce-detail">245 px&sup2; darkened</span>
+          <span class="ce-conf" style="color:var(--green);">Confidence: 89%</span>
+        </div>
+        <div class="ce-card">
+          <span class="ce-id">&Delta;2</span>
+          <span>Cell (1,3)</span>
+          <span class="ce-detail">128 px&sup2; brightened</span>
+          <span class="ce-conf" style="color:var(--amber);">Confidence: 72%</span>
+        </div>
+        <div class="ce-card">
+          <span class="ce-id">&Delta;3</span>
+          <span>Cell (3,4)</span>
+          <span class="ce-detail">412 px&sup2; darkened [P]</span>
+          <span class="ce-conf" style="color:var(--green);">Confidence: 94%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TELEMETRY TAB ═══ -->
+<div class="tab-page" id="tab-telemetry">
+  <div class="grid-2">
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">IMU / Attitude</span></div>
+        <div class="pnl-body">
+          <div class="kv"><span class="k">Sat State</span><span class="v green">IMAGING</span></div>
+          <div class="kv"><span class="k">Roll</span><span class="v">-2.3&deg;</span></div>
+          <div class="kv"><span class="k">Pitch</span><span class="v">1.1&deg;</span></div>
+          <div class="kv"><span class="k">Nadir Lock</span><span class="v green">LOCKED</span></div>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">System</span></div>
+        <div class="pnl-body">
+          <div class="kv"><span class="k">CPU Temp</span><span class="v">52.4 &deg;C</span></div>
+          <div class="kv"><span class="k">Storage</span><span class="v">34%</span></div>
+          <div class="kv"><span class="k">Queue</span><span class="v">2</span></div>
+          <div class="kv"><span class="k">Uptime</span><span class="v">1h 23m 45s</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Commands</span></div>
+        <div class="pnl-body">
+          <div class="cmd-grid">
+            <button class="btn-red" style="padding:10px;">SAFE MODE</button>
+            <button style="padding:10px;">RESUME NORMAL</button>
+            <button style="padding:10px;">STATUS REQUEST</button>
+            <button style="padding:10px;">RETRY DOWNLINK</button>
+          </div>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Advanced Commands</span></div>
+        <div class="pnl-body">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--dim);min-width:80px;">RETRANSMIT</span>
+            <input type="text" placeholder="image_id" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--bright);font-family:var(--mono);font-size:10px;padding:5px 8px;">
+            <button style="font-size:9px;">SEND</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--dim);min-width:80px;">PRIORITY CELL</span>
+            <input type="number" min="0" max="7" value="0" style="width:36px;text-align:center;">
+            <input type="number" min="0" max="7" value="0" style="width:36px;text-align:center;">
+            <button style="font-size:9px;">SET</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--dim);min-width:80px;">EXPOSURE</span>
+            <input type="text" placeholder="e.g. 20000" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--bright);font-family:var(--mono);font-size:10px;padding:5px 8px;">
+            <button style="font-size:9px;">SET</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ LOG TAB ═══ -->
+<div class="tab-page" id="tab-log">
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Quality Log</span><span class="pnl-badge">12 images</span></div>
+    <div class="pnl-body" style="padding:4px;">
+      <table class="data-table">
+        <thead><tr><th>Filename</th><th>CubeSat Score</th><th>Ground OK</th><th>Notes</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>img_001.jpg</td><td>0.92</td><td style="color:var(--green);">&#10003;</td><td>&mdash;</td><td>ok</td></tr>
+          <tr><td>img_002.jpg</td><td>0.87</td><td style="color:var(--green);">&#10003;</td><td>&mdash;</td><td>ok</td></tr>
+          <tr><td>img_003.jpg</td><td>0.45</td><td style="color:var(--red);">&#10007;</td><td>low texture variance</td><td>flagged</td></tr>
+          <tr><td>img_004.jpg</td><td>0.91</td><td style="color:var(--green);">&#10003;</td><td>&mdash;</td><td>ok</td></tr>
+          <tr><td>img_005.jpg</td><td>0.88</td><td style="color:var(--green);">&#10003;</td><td>&mdash;</td><td>ok</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pnl">
+    <div class="pnl-hdr"><span class="pnl-title">Event Log</span><span class="pnl-badge">24 lines</span></div>
+    <div class="pnl-body" style="padding:0;">
+      <div class="log-box">
+<span>2026-03-15 21:47:38  INFO  __main__ — Data directories verified</span>
+<span>2026-03-15 21:47:38  INFO  processing.mission_state — MissionState: resumed</span>
+<span>2026-03-15 21:47:38  INFO  __main__ — MissionState, Pipeline, Commander initialised</span>
+<span>2026-03-15 21:47:38  INFO  receiver.listener — Listening on 0.0.0.0:5000</span>
+<span>2026-03-15 21:48:12  INFO  receiver.listener — Connection from 192.168.1.229</span>
+<span>2026-03-15 21:48:35  INFO  receiver.listener — Saved 'img_001.jpg' (28,412 bytes)</span>
+<span>2026-03-15 21:48:36  INFO  processing.pipeline — Pipeline: starting for 'img_001.jpg'</span>
+<span>2026-03-15 21:48:36  INFO  processing.cell_identifier — CellIdentifier: first image → cell (0, 0)</span>
+<span>2026-03-15 21:48:37  INFO  processing.shadow_detector — shadow=8.2%, 2 regions</span>
+<span>2026-03-15 21:48:37  INFO  processing.hazard_classifier — cell (0,0) → SAFE (cost=1)</span>
+<span class="log-warn">2026-03-15 21:49:10  WARNING  receiver.quality_check — Ground quality flag for 'img_003.jpg'</span>
+<span class="log-err">2026-03-15 21:50:22  ERROR  processing.pipeline — yolo_detector FAILED: model not found</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="llm-bar">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
+    <input type="text" placeholder="Ask about mission state (requires local ollama)">
+    <button>ASK</button>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

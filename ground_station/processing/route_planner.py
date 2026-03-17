@@ -325,7 +325,7 @@ def _build_route_result(
         "path": [list(cell) for cell in path],
         "total_cost": round(total_cost, 2),
         "path_length_cells": path_len,
-        "distance_cm": round(path_len * config.GRID_CELL_SIZE_CM, 1),
+        "distance_cm": round(path_len * config.GRID_CELL_SIZE_CM * (config.SEG_GRID_CELL_PX / config.MOSAIC_GRID_CELL_PX if config.SEG_ENABLED else 1.0), 1),
         "max_shadow_exposure_pct": round(shadow_pct, 1),
         "hazards_near_path": hazards_near,
         "nearest_hazard_distance_cells": round(nearest_hazard_dist, 2),
@@ -449,7 +449,11 @@ def _path_cost(path: list, cost_grid: np.ndarray) -> float:
 # Visualisation
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CELL_VIS_PX = 64   # pixels per grid cell in the route map (for visualization)
+def _get_cell_vis_px(rows, cols):
+    """Dynamic cell visualization size — scale down for large grids."""
+    return max(4, min(64, 512 // max(rows, cols)))
+
+_CELL_VIS_PX = 64   # default, overridden dynamically for fine grids
 
 
 def grid_path_to_mosaic_path(path: list, cell_px: int = None) -> list:
@@ -478,7 +482,7 @@ def _save_route_comparison(
 ) -> str:
     """Draw all 3 paths on one image with a legend. Saves route_comparison.png."""
     rows, cols = cost_grid.shape
-    cell_px = _CELL_VIS_PX
+    cell_px = _get_cell_vis_px(rows, cols)
     base = _build_base_canvas(cost_grid, hazard_grid, hazard_map_path, rows, cols, cell_px)
 
     for name in ("fastest", "safest", "balanced"):
@@ -525,7 +529,7 @@ def _save_individual_route_map(
     name: str,
 ) -> str:
     rows, cols = cost_grid.shape
-    cell_px = _CELL_VIS_PX
+    cell_px = _get_cell_vis_px(rows, cols)
     base = _build_base_canvas(cost_grid, hazard_grid, hazard_map_path, rows, cols, cell_px)
 
     colour_bgr = _ROUTE_COLOURS_BGR.get(name, _DEFAULT_PATH_COLOUR)

@@ -28,6 +28,8 @@ import logging
 import os
 import threading
 
+import numpy as np
+
 import config
 from processing.change_detector import ChangeDetector
 from processing.hazard_classifier import HazardClassifier, save_cost_grid_json
@@ -36,6 +38,7 @@ from processing.mosaic_stitcher import MosaicStitcher
 from processing.mosaic_grid import MosaicGrid
 from processing.route_planner import RoutePlanner
 from processing.shadow_detector import ShadowDetector
+from processing.pixel_segmenter import PixelSegmenter
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 
 logger = logging.getLogger(__name__)
@@ -62,6 +65,7 @@ class Pipeline:
         self._yolo_detector      = YOLODetector()
         self._change_detector    = ChangeDetector()
         self._route_planner      = RoutePlanner()
+        self._pixel_segmenter    = PixelSegmenter()
 
         # YOLO detection state (accumulated across images)
         self._yolo_detections: dict = {}   # {"filename": [detection_dicts]}
@@ -247,6 +251,33 @@ class Pipeline:
         except Exception as e:
             logger.error(f"Pipeline [{basename}] yolo_detector FAILED: {e}", exc_info=True)
 
+        # ── 4c. Pixel segmentation (if enabled) ──
+        if config.SEG_ENABLED:
+            try:
+                import time as _time
+                t_seg = _time.monotonic()
+                shadow_mask_seg = shadow_result["shadow_mask"] if shadow_result else None
+
+                # Collect YOLO detections for segmenter
+                yolo_dets_for_seg = self._yolo_detections.get(basename, [])
+
+                label_map = self._pixel_segmenter.segment(
+                    image_path, shadow_mask_seg, yolo_dets_for_seg
+                )
+
+                # Project onto fine grid
+                self._mosaic_grid.apply_segmentation_mask(
+                    mosaic_bbox, label_map, config.SEG_COST_MAP, confidence=1.0
+                )
+
+                seg_ms = (_time.monotonic() - t_seg) * 1000
+                logger.info(
+                    f"Pipeline [{basename}] segmentation: {seg_ms:.0f}ms, "
+                    f"fine grid {self._mosaic_grid.fine_rows}x{self._mosaic_grid.fine_cols}"
+                )
+            except Exception as e:
+                logger.error(f"Pipeline [{basename}] pixel_segmenter FAILED: {e}", exc_info=True)
+
         # ── Update image index ──
         pass_number = metadata.get("pass_number", 1)
         prev_entry = self._get_prev_entry(basename, pass_number)
@@ -306,15 +337,33 @@ class Pipeline:
         # ── 6. Route planning ──
         if self._route_start_mosaic is not None and self._route_end_mosaic is not None:
             try:
-                cost_grid = self._mosaic_grid.get_cost_grid()
-                hazard_grid = self._mosaic_grid.get_hazard_grid()
-
-                start = self._mosaic_grid.mosaic_px_to_grid(
-                    self._route_start_mosaic[0], self._route_start_mosaic[1]
-                )
-                end = self._mosaic_grid.mosaic_px_to_grid(
-                    self._route_end_mosaic[0], self._route_end_mosaic[1]
-                )
+                if config.SEG_ENABLED:
+                    cost_grid = self._mosaic_grid.get_fine_cost_grid()
+                    # Build a string hazard grid from fine label grid for route planner compat
+                    from processing.pixel_segmenter import LABEL_NAMES
+                    fine_hg = self._mosaic_grid.get_fine_hazard_grid()
+                    _label_to_hazard = {0: "SAFE", 1: "SAFE", 2: "SAFE",
+                                        3: "SHADOW", 4: "HAZARD", 5: "IMPASSABLE"}
+                    hazard_grid = [
+                        [_label_to_hazard.get(int(fine_hg[r, c]), "SAFE")
+                         for c in range(fine_hg.shape[1])]
+                        for r in range(fine_hg.shape[0])
+                    ]
+                    start = self._mosaic_grid.mosaic_px_to_fine_grid(
+                        self._route_start_mosaic[0], self._route_start_mosaic[1]
+                    )
+                    end = self._mosaic_grid.mosaic_px_to_fine_grid(
+                        self._route_end_mosaic[0], self._route_end_mosaic[1]
+                    )
+                else:
+                    cost_grid = self._mosaic_grid.get_cost_grid()
+                    hazard_grid = self._mosaic_grid.get_hazard_grid()
+                    start = self._mosaic_grid.mosaic_px_to_grid(
+                        self._route_start_mosaic[0], self._route_start_mosaic[1]
+                    )
+                    end = self._mosaic_grid.mosaic_px_to_grid(
+                        self._route_end_mosaic[0], self._route_end_mosaic[1]
+                    )
 
                 routes = self._route_planner.plan_multiple_routes(
                     cost_grid, hazard_grid, start, end,
@@ -452,6 +501,43 @@ class Pipeline:
         """Return path to the most recent hazard map image."""
         with self._lock:
             return self._latest_hazard_map_path
+
+    def get_fine_cost_grid(self):
+        """Return a copy of the fine cost_grid numpy array (if SEG_ENABLED)."""
+        with self._lock:
+            return self._mosaic_grid.get_fine_cost_grid()
+
+    def get_fine_hazard_grid(self):
+        """Return a copy of the fine hazard label grid (if SEG_ENABLED)."""
+        with self._lock:
+            return self._mosaic_grid.get_fine_hazard_grid()
+
+    def get_segmentation_overlay(self):
+        """Generate a color-coded BGRA segmentation overlay for the mosaic."""
+        with self._lock:
+            hazard_grid = self._mosaic_grid.get_fine_hazard_grid()
+            if hazard_grid is None or hazard_grid.shape == (1, 1):
+                return None
+
+            from processing.pixel_segmenter import LABEL_COLORS
+
+            rows, cols = hazard_grid.shape
+            grid_img = np.zeros((rows, cols, 4), dtype=np.uint8)
+
+            for label_val, bgr_color in LABEL_COLORS.items():
+                mask = (hazard_grid == label_val)
+                grid_img[mask, 0] = bgr_color[0]
+                grid_img[mask, 1] = bgr_color[1]
+                grid_img[mask, 2] = bgr_color[2]
+                grid_img[mask, 3] = 160 if label_val > 0 else 0
+
+            # Upscale to mosaic pixel dimensions
+            cw, ch = self._stitcher.get_canvas_size()
+            if cw > 0 and ch > 0:
+                import cv2
+                overlay = cv2.resize(grid_img, (cw, ch), interpolation=cv2.INTER_NEAREST)
+                return overlay
+            return grid_img
 
     def get_mosaic_info(self) -> dict:
         """Return mosaic metadata for the dashboard."""

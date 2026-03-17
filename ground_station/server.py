@@ -37,6 +37,7 @@ _REQUIRED_DIRS = [
     os.path.join(config.PROCESSED_DIR, "mosaics"),
     os.path.join(config.PROCESSED_DIR, "routes"),
     os.path.join(config.PROCESSED_DIR, "mosaic_database"),
+    os.path.join(config.PROCESSED_DIR, "segmentation_maps"),
     "data/logs",
 ]
 

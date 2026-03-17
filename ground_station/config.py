@@ -48,6 +48,21 @@ ROUTE_START = None                 # Set via dashboard click on mosaic
 ROUTE_END = None                   # Set via dashboard click on mosaic
 GRID_CELL_SIZE_CM = 10.0           # Physical size of each grid cell (cm)
 
+# === PIXEL SEGMENTATION ===
+SEG_GRID_CELL_PX = 20              # Fine grid cell size in pixels (high-res route planning)
+SEG_SAFETY_DILATION_PX = 3         # Dilate hazard masks by this many pixels as safety margin
+SEG_MIN_CONTOUR_AREA_PCT = 5.0     # Min contour area as % of bbox to keep (noise filter)
+SEG_FALLBACK_ELLIPSE_PCT = 60.0    # If no good contour, fill this % ellipse within bbox
+SEG_ENABLED = True                 # Feature flag — False reverts to coarse grid routing
+SEG_COST_MAP = {                   # Semantic label → traversal cost for A* routing
+    0: COST_SAFE,                  # UNSURVEYED — assume passable
+    1: COST_SAFE,                  # SAND — safe
+    2: COST_SAFE,                  # PLAIN_SURFACE — safe
+    3: COST_SHADOW,                # SHADOW — uncertain, high cost
+    4: COST_HAZARD,                # CRATER — very risky
+    5: COST_IMPASSABLE,            # BOULDER — impassable
+}
+
 # === MOSAIC ===
 MOSAIC_GRID_CELL_PX = 80           # Each dynamic grid cell = this many mosaic pixels
 MOSAIC_INITIAL_CANVAS_PX = 640     # Initial canvas size (square)

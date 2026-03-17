@@ -259,6 +259,58 @@ def api_cost_grid():
     return jsonify({"grid": [], "rows": 0, "cols": 0, "classifications": [], "coverage": [], "pass_data": [], "change_cells": []})
 
 
+@app.route("/api/segmentation_overlay")
+def api_segmentation_overlay():
+    """Return pixel-level segmentation overlay as PNG (BGRA, transparent)."""
+    if _pipeline is None:
+        return ("Pipeline not ready", 503)
+    overlay = _pipeline.get_segmentation_overlay()
+    if overlay is None:
+        return ("No segmentation data yet", 204)
+    import cv2
+    success, buf = cv2.imencode(".png", overlay)
+    if not success:
+        return ("Encoding failed", 500)
+    return send_file(
+        io.BytesIO(buf.tobytes()),
+        mimetype="image/png",
+        download_name="segmentation_overlay.png",
+    )
+
+
+@app.route("/api/segmentation_map")
+def api_segmentation_map():
+    """Return the latest segmentation visualization PNG."""
+    seg_dir = os.path.join(config.PROCESSED_DIR, "segmentation_maps")
+    path = _latest_file(seg_dir, "*_seg.png")
+    if path:
+        return send_file(os.path.abspath(path), mimetype="image/png")
+    return ("No segmentation map yet", 204)
+
+
+@app.route("/api/fine_grid")
+def api_fine_grid():
+    """Return fine grid data for pixel-level route planning."""
+    if _pipeline is None or not config.SEG_ENABLED:
+        return jsonify({"enabled": False})
+
+    fine_cost = _pipeline.get_fine_cost_grid()
+    fine_hazard = _pipeline.get_fine_hazard_grid()
+    mg = _pipeline._mosaic_grid
+
+    from processing.pixel_segmenter import LABEL_NAMES
+    return jsonify({
+        "enabled": True,
+        "fine_cell_px": config.SEG_GRID_CELL_PX,
+        "fine_rows": mg.fine_rows,
+        "fine_cols": mg.fine_cols,
+        "coarse_cell_px": config.MOSAIC_GRID_CELL_PX,
+        "cost_grid": fine_cost.tolist(),
+        "hazard_grid": fine_hazard.tolist(),
+        "label_names": LABEL_NAMES,
+    })
+
+
 @app.route("/api/changes")
 def api_changes():
     """Return changes.json contents."""

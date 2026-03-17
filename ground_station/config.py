@@ -52,9 +52,13 @@ GRID_CELL_SIZE_CM = 10.0           # Physical size of each grid cell (cm)
 MOSAIC_GRID_CELL_PX = 80           # Each dynamic grid cell = this many mosaic pixels
 MOSAIC_INITIAL_CANVAS_PX = 640     # Initial canvas size (square)
 MOSAIC_PX_PER_CM = 8.0             # Mosaic pixels per centimetre (calibration)
-MOSAIC_MIN_SIFT_INLIERS = 10      # Minimum RANSAC inliers for a valid match
+MOSAIC_MIN_SIFT_INLIERS = 6       # Minimum RANSAC inliers for a valid match (low for sandy terrain)
 MOSAIC_CANVAS_PAD_PX = 100         # Padding added when canvas grows
 MOSAIC_MAX_CANVAS_PX = 4096        # Memory cap for canvas dimensions
+MOSAIC_MAX_KEYPOINTS = 1024        # SuperPoint max keypoints per image
+MOSAIC_BUNDLE_ADJUST_INTERVAL = 3  # Run bundle adjustment every N images
+MOSAIC_BLEND_LEVELS = 4            # Laplacian pyramid levels for multi-band blend
+MOSAIC_EXPOSURE_GAIN_RANGE = (0.5, 2.0)  # Clamp exposure gain to this range
 
 # === DASHBOARD ===
 DASHBOARD_PORT = 3000

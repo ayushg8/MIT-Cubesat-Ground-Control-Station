@@ -14,12 +14,14 @@ import json
 import logging
 import os
 import shutil
+import time
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, Response, jsonify, render_template, request, send_file
 
 import config
 from receiver import telemetry_parser
+from receiver.downlink_state import get_state as get_downlink_state
 from uplink.commander import Commander
 from uplink import pi_manager
 
@@ -311,6 +313,35 @@ def api_fine_grid():
     })
 
 
+@app.route("/api/ppo_status")
+def api_ppo_status():
+    """Return PPO planner availability and latest route info."""
+    from processing import ppo_planner
+    available = ppo_planner.is_available()
+    result = {"available": available}
+    if _mission_state:
+        state = _mission_state.get_snapshot()
+        ppo_route = state.get("routes", {}).get("ppo")
+        if ppo_route:
+            result["latest_route"] = {
+                "path_length": ppo_route.get("path_length_cells", 0),
+                "total_cost": ppo_route.get("total_cost", 0),
+                "cumulative_slip_risk": ppo_route.get("cumulative_slip_risk", 0),
+                "reached_goal": ppo_route.get("reached_goal", False),
+                "status": ppo_route.get("status", "unknown"),
+            }
+    return jsonify(result)
+
+
+@app.route("/api/route_map/ppo")
+def api_route_map_ppo():
+    """Serve the PPO-specific route map image."""
+    path = os.path.join(config.PROCESSED_DIR, "routes", "route_ppo.png")
+    if os.path.exists(path):
+        return send_file(os.path.abspath(path), mimetype="image/png")
+    return ("No PPO route map yet", 204)
+
+
 @app.route("/api/changes")
 def api_changes():
     """Return changes.json contents."""
@@ -327,6 +358,81 @@ def api_shadow_data():
     if os.path.exists(path):
         return send_file(os.path.abspath(path), mimetype="application/json")
     return jsonify({"shadow_pct": 0, "regions": []})
+
+
+@app.route("/api/yolo_detections_mosaic")
+def api_yolo_detections_mosaic():
+    """Return YOLO detections projected into mosaic pixel coordinates."""
+    if _pipeline is None:
+        return jsonify({"detections": []})
+    detections = _pipeline.get_yolo_detections_mosaic()
+    return jsonify({"detections": detections})
+
+
+@app.route("/api/slope_grid")
+def api_slope_grid():
+    """Return slope grid (degrees per cell)."""
+    if _pipeline is None:
+        return jsonify({"grid": [], "rows": 0, "cols": 0})
+    slope = _pipeline.get_slope_grid()
+    return jsonify({
+        "grid": slope.tolist(),
+        "rows": slope.shape[0],
+        "cols": slope.shape[1],
+    })
+
+
+@app.route("/api/effective_cost_grid")
+def api_effective_cost_grid():
+    """Return the uncertainty/slope-adjusted effective cost grid."""
+    if _pipeline is None:
+        return jsonify({"grid": [], "rows": 0, "cols": 0})
+    effective = _pipeline.get_effective_cost_grid()
+    return jsonify({
+        "grid": effective.tolist(),
+        "rows": effective.shape[0],
+        "cols": effective.shape[1],
+    })
+
+
+@app.route("/api/downlink_stream")
+def api_downlink_stream():
+    """SSE endpoint — streams live downlink progress to the browser."""
+    def generate():
+        dl = get_downlink_state()
+        last_seq = -1
+        while True:
+            current_seq = dl.seq
+            if current_seq != last_seq:
+                last_seq = current_seq
+                snapshot = dl.get_snapshot()
+                data = json.dumps(snapshot)
+                yield f"data: {data}\n\n"
+            time.sleep(0.25)  # 4 updates/sec max
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.route("/api/downlink_status")
+def api_downlink_status():
+    """Fallback JSON endpoint for downlink state (non-SSE clients)."""
+    dl = get_downlink_state()
+    return jsonify(dl.get_snapshot())
+
+
+@app.route("/api/downlink_history")
+def api_downlink_history():
+    """Return recent transfer history."""
+    dl = get_downlink_state()
+    return jsonify({"transfers": dl.get_history()})
 
 
 @app.route("/api/image/<path:filename>")
@@ -394,7 +500,7 @@ def api_plan_routes():
     if _pipeline is None:
         return jsonify({"error": "Pipeline not ready"}), 503
 
-    cost_grid = _pipeline.get_cost_grid()
+    cost_grid = _pipeline.get_effective_cost_grid() if config.UNCERTAINTY_ENABLED else _pipeline.get_cost_grid()
     hazard_grid = _pipeline.get_hazard_grid()
     rows, cols = cost_grid.shape
     hazard_map_path = _pipeline.get_latest_hazard_map_path() if hasattr(_pipeline, 'get_latest_hazard_map_path') else None
@@ -429,8 +535,8 @@ def api_plan_routes():
             cost_grid, hazard_grid, start, end, hazard_map_path,
         )
 
-        # Add mosaic_path to each route
-        for name in ("fastest", "safest", "balanced"):
+        # Add mosaic_path to each route (including PPO if present)
+        for name in ("fastest", "safest", "balanced", "ppo"):
             if name in routes and routes[name].get("path"):
                 routes[name]["mosaic_path"] = grid_path_to_mosaic_path(routes[name]["path"])
 
@@ -439,6 +545,8 @@ def api_plan_routes():
                 _mission_state._state["routes"]["fastest"] = routes.get("fastest")
                 _mission_state._state["routes"]["safest"] = routes.get("safest")
                 _mission_state._state["routes"]["balanced"] = routes.get("balanced")
+                if "ppo" in routes:
+                    _mission_state._state["routes"]["ppo"] = routes["ppo"]
                 _mission_state._state["route"]["start"] = list(start)
                 _mission_state._state["route"]["end"] = list(end)
             _mission_state.save()

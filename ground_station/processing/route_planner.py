@@ -27,6 +27,7 @@ from processing.hazard_classifier import (
     SAFE, MODERATE, SHADOW, HAZARD, IMPASSABLE,
     _COLOURS as HAZARD_COLOURS,
 )
+from processing import ppo_planner
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +46,22 @@ _ROUTE_COLOURS_BGR = {
     "fastest":  (136, 255,   0),   # #00ff88 in BGR
     "safest":   (0,   170, 255),   # #ffaa00 in BGR
     "balanced": (68,  68,  255),   # #ff4444 in BGR
+    "ppo":      (255, 100,   0),   # #0064ff in BGR — blue
 }
 _ROUTE_COLOURS_HEX = {
     "fastest":  "#00ff88",
     "safest":   "#ffaa00",
     "balanced": "#ff4444",
+    "ppo":      "#0064ff",
 }
 _ROUTE_NAMES = {
     "fastest":  "Fastest",
     "safest":   "Safest",
     "balanced": "Balanced",
+    "ppo":      "PPO",
 }
+_PPO_COLOUR_BGR = (255, 100, 0)    # blue-ish in BGR
+_PPO_COLOUR_HEX = "#0064ff"
 
 _SQRT2 = math.sqrt(2)
 _CARDINAL_DIRS  = [(-1,0),(1,0),(0,-1),(0,1)]
@@ -128,6 +134,50 @@ class RoutePlanner:
                 f"cost={routes[name]['total_cost']}"
             )
 
+        # ── PPO route (runs alongside A*) ──
+        if ppo_planner.is_available():
+            try:
+                ppo_result = ppo_planner.plan_ppo_route(cost_grid, start, end)
+                if ppo_result is not None:
+                    # Compute shadow exposure for PPO path
+                    ppo_path = [tuple(c) for c in ppo_result["path"]]
+                    shadow_cells = 0
+                    if hazard_grid:
+                        shadow_cells = sum(
+                            1 for (r, c) in ppo_path
+                            if 0 <= r < rows and 0 <= c < cols and hazard_grid[r][c] == SHADOW
+                        )
+                    shadow_pct = (shadow_cells / len(ppo_path) * 100.0) if ppo_path else 0.0
+
+                    routes["ppo"] = {
+                        "name": "PPO",
+                        "path": ppo_result["path"],
+                        "total_cost": ppo_result["total_cost"],
+                        "path_length_cells": ppo_result["path_length"],
+                        "distance_cm": ppo_result["distance_cm"],
+                        "max_shadow_exposure_pct": round(shadow_pct, 1),
+                        "cumulative_slip_risk": ppo_result["cumulative_slip_risk"],
+                        "reached_goal": ppo_result["reached_goal"],
+                        "color": _PPO_COLOUR_HEX,
+                        "status": ppo_result["status"],
+                        "route_map_path": "",
+                    }
+                    logger.info(
+                        f"RoutePlanner [ppo]: status={ppo_result['status']} "
+                        f"length={ppo_result['path_length']} "
+                        f"cost={ppo_result['total_cost']} "
+                        f"slip_risk={ppo_result['cumulative_slip_risk']}"
+                    )
+            except Exception as e:
+                logger.error(f"RoutePlanner [ppo] FAILED: {e}", exc_info=True)
+
+        # Add slip risk to A* routes
+        for name in ("fastest", "safest", "balanced"):
+            if name in routes and routes[name].get("path"):
+                routes[name]["cumulative_slip_risk"] = _compute_slip_risk(
+                    routes[name]["path"], cost_grid
+                )
+
         # Save comparison image + individual maps
         _save_route_comparison(cost_grid, hazard_grid, routes, start, end, hazard_map_path)
         for name in ("fastest", "safest", "balanced"):
@@ -136,6 +186,14 @@ class RoutePlanner:
                 cost_grid, hazard_grid, path, start, end, hazard_map_path, name
             )
             routes[name]["route_map_path"] = out
+
+        # PPO individual map
+        if "ppo" in routes and routes["ppo"].get("path"):
+            out = _save_individual_route_map(
+                cost_grid, hazard_grid, routes["ppo"]["path"],
+                start, end, hazard_map_path, "ppo"
+            )
+            routes["ppo"]["route_map_path"] = out
 
         # Save JSON data
         _save_routes_json(routes, start, end)
@@ -336,14 +394,28 @@ def _build_route_result(
     }
 
 
+def _compute_slip_risk(path: list, cost_grid: np.ndarray) -> float:
+    """Compute cumulative slip risk along a path."""
+    risk = 0.0
+    rows, cols = cost_grid.shape
+    for step in path:
+        r, c = step if isinstance(step, (list, tuple)) else (step[0], step[1])
+        if 0 <= r < rows and 0 <= c < cols:
+            cell_cost = float(cost_grid[r, c])
+            risk += min(cell_cost / float(config.COST_HAZARD), 1.0)
+    return round(risk, 2)
+
+
 def _save_routes_json(routes: dict, start: tuple, end: tuple):
     """Save route planning results as JSON for the dashboard."""
     os.makedirs(config.PROCESSED_DIR, exist_ok=True)
     out_path = os.path.join(config.PROCESSED_DIR, "routes.json")
 
     route_list = []
-    for name in ("fastest", "safest", "balanced"):
+    for name in ("fastest", "safest", "balanced", "ppo"):
         rd = routes.get(name, {})
+        if not rd:
+            continue
         route_list.append({
             "name": rd.get("name", name.capitalize()),
             "path": rd.get("path", []),
@@ -355,7 +427,9 @@ def _save_routes_json(routes: dict, start: tuple, end: tuple):
                 "nearest_hazard_distance_cells": rd.get("nearest_hazard_distance_cells", 0),
                 "risk_level": rd.get("risk_level", "LOW"),
                 "total_cost": rd.get("total_cost", 0),
+                "cumulative_slip_risk": rd.get("cumulative_slip_risk", 0),
                 "status": rd.get("status", "no_path"),
+                "reached_goal": rd.get("reached_goal", True),
             },
             "color": rd.get("color", "#ffffff"),
         })
@@ -485,29 +559,36 @@ def _save_route_comparison(
     cell_px = _get_cell_vis_px(rows, cols)
     base = _build_base_canvas(cost_grid, hazard_grid, hazard_map_path, rows, cols, cell_px)
 
-    for name in ("fastest", "safest", "balanced"):
+    route_names_to_draw = ["fastest", "safest", "balanced"]
+    if "ppo" in routes:
+        route_names_to_draw.append("ppo")
+
+    for name in route_names_to_draw:
         route = routes.get(name, {})
         path = route.get("path", [])
         if len(path) < 2:
             continue
-        colour_bgr = _ROUTE_COLOURS_BGR[name]
+        colour_bgr = _ROUTE_COLOURS_BGR.get(name, _DEFAULT_PATH_COLOUR)
+        thickness = 4 if name == "ppo" else 3
         for i in range(1, len(path)):
             r0, c0 = path[i - 1]
             r1, c1 = path[i]
             p0 = (c0 * cell_px + cell_px // 2, r0 * cell_px + cell_px // 2)
             p1 = (c1 * cell_px + cell_px // 2, r1 * cell_px + cell_px // 2)
-            cv2.line(base, p0, p1, colour_bgr, 3, cv2.LINE_AA)
+            cv2.line(base, p0, p1, colour_bgr, thickness, cv2.LINE_AA)
 
     # Legend box (top-right)
+    legend_entries = [(n, _ROUTE_NAMES.get(n, n)) for n in route_names_to_draw]
+    legend_h = 8 + len(legend_entries) * 16
     legend_x = cols * cell_px - 110
     legend_y = 6
     cv2.rectangle(base, (legend_x - 4, legend_y - 2),
-                  (cols * cell_px - 4, legend_y + 52), (30, 30, 30), -1)
-    for i, name in enumerate(("fastest", "safest", "balanced")):
-        colour_bgr = _ROUTE_COLOURS_BGR[name]
+                  (cols * cell_px - 4, legend_y + legend_h), (30, 30, 30), -1)
+    for i, (name, display) in enumerate(legend_entries):
+        colour_bgr = _ROUTE_COLOURS_BGR.get(name, _DEFAULT_PATH_COLOUR)
         cy = legend_y + 10 + i * 16
         cv2.circle(base, (legend_x + 6, cy), 5, colour_bgr, -1)
-        cv2.putText(base, _ROUTE_NAMES[name], (legend_x + 16, cy + 4),
+        cv2.putText(base, display, (legend_x + 16, cy + 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (220, 220, 220), 1, cv2.LINE_AA)
 
     _draw_start_end_markers(base, start, end, cell_px)

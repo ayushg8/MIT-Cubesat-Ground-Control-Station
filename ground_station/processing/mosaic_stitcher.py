@@ -152,7 +152,11 @@ class MosaicStitcher:
         best_method = "sequential"
 
         if feats is not None and kp_np is not None and len(kp_np) >= 5:
-            for entry in self._entries:
+            # Limit candidates to most recent entries for performance
+            # (most likely to overlap with new image)
+            _MAX_MATCH_CANDIDATES = 30
+            candidates = self._entries[-_MAX_MATCH_CANDIDATES:]
+            for entry in candidates:
                 ref_feats = self._get_entry_feats(entry)
                 if ref_feats is None:
                     continue

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MuraltZ GCS — Mission Operations</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
 /* ══ RESET ════════════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -161,27 +163,35 @@ input.active-input { border-color: var(--cyan); }
 .stat-num { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--bright); }
 .stat-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-top: 4px; }
 
-/* ══ MOSAIC VIEWER ══ */
+/* ══ MOSAIC VIEWER (Leaflet) ══ */
 #mosaic-section { flex: 0 0 auto; }
-#mosaic-viewer-wrap {
-  position: relative; display: inline-block; overflow: hidden;
-  width: 700px; height: 600px; border: 1px solid var(--border);
-  background: #0d1220; cursor: grab;
+#mosaic-map {
+  width: 100%; height: 600px; border: 1px solid var(--border);
+  background: #0d1220;
 }
-#mosaic-viewer-wrap:active { cursor: grabbing; }
-#mosaic-canvas { position: absolute; top: 0; left: 0; }
-#mosaic-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
-#mosaic-tooltip {
-  position: absolute; pointer-events: none; display: none;
-  background: rgba(10,14,23,0.95); border: 1px solid var(--cyan);
-  color: var(--bright); font-family: var(--mono); font-size: 10px;
-  padding: 4px 8px; white-space: nowrap; z-index: 100;
+/* Dark theme for Leaflet controls */
+.leaflet-control-layers { background: var(--panel) !important; color: var(--txt) !important; border: 1px solid var(--border) !important; }
+.leaflet-control-layers-toggle { background-color: var(--panel) !important; }
+.leaflet-control-layers label { color: var(--txt); font-family: var(--mono); font-size: 10px; }
+.leaflet-control-zoom a { background: var(--panel) !important; color: var(--txt) !important; border-color: var(--border) !important; }
+.leaflet-popup-content-wrapper { background: var(--panel); color: var(--txt); font-family: var(--mono); font-size: 10px; border: 1px solid var(--border); }
+.leaflet-popup-tip { background: var(--panel); }
+.leaflet-popup-content { margin: 8px 12px; }
+/* Hazard sidebar */
+#hazard-sidebar {
+  max-height: 300px; overflow-y: auto; margin-top: 8px;
+  border: 1px solid var(--border); background: var(--panel);
 }
-#mosaic-minimap {
-  position: absolute; bottom: 8px; right: 8px; width: 120px; height: 120px;
-  border: 1px solid var(--border); background: rgba(10,14,23,0.8);
-  pointer-events: none; z-index: 50;
+.hazard-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  border-bottom: 1px solid #1a2030; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  transition: background 0.15s;
 }
+.hazard-item:hover { background: rgba(0,212,255,0.06); }
+.hazard-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.hazard-class { color: var(--bright); font-weight: 700; min-width: 60px; }
+.hazard-conf { margin-left: auto; }
 .mosaic-controls {
   display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;
 }
@@ -377,6 +387,84 @@ input.active-input { border-color: var(--cyan); }
 #llm-input { flex: 1; width: auto !important; padding: 6px 8px !important; font-size: 11px !important; }
 #llm-response { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; padding: 4px 8px; min-height: 18px; }
 
+/* ══ LIVE DOWNLINK ══ */
+.dl-live-wrap {
+  border: 1px solid var(--border); background: #0d1220; padding: 10px 12px;
+  margin-bottom: 8px; position: relative; overflow: hidden;
+}
+.dl-live-wrap.active { border-color: var(--cyan); }
+.dl-live-wrap.dl-failed { border-color: var(--red); }
+.dl-live-wrap.dl-complete { border-color: var(--green); }
+
+.dl-status-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.dl-status-dot.idle { background: var(--dim); }
+.dl-status-dot.receiving { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); animation: dl-pulse 1.2s ease-in-out infinite; }
+.dl-status-dot.validating { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dl-status-dot.processing { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: dl-pulse 0.8s ease-in-out infinite; }
+.dl-status-dot.complete { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dl-status-dot.failed { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+@keyframes dl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.dl-progress-track {
+  height: 8px; background: #1e2233; width: 100%; margin: 8px 0 6px;
+  position: relative; overflow: hidden;
+}
+.dl-progress-fill {
+  height: 100%; background: var(--cyan); transition: width 0.2s linear;
+  position: relative;
+}
+.dl-progress-fill.complete { background: var(--green); }
+.dl-progress-fill.failed { background: var(--red); }
+.dl-progress-fill::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 40px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15));
+  animation: dl-shimmer 1.5s infinite;
+}
+.dl-progress-fill.complete::after, .dl-progress-fill.failed::after { display: none; }
+
+@keyframes dl-shimmer {
+  0% { transform: translateX(-40px); }
+  100% { transform: translateX(40px); }
+}
+
+.dl-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  font-family: var(--mono); font-size: 10px;
+}
+.dl-stat-label { color: var(--dim); font-size: 8px; text-transform: uppercase; }
+.dl-stat-value { color: var(--bright); font-size: 12px; font-weight: 700; }
+
+.dl-filename {
+  font-family: var(--mono); font-size: 11px; color: var(--bright);
+  display: inline; margin-left: 4px;
+}
+.dl-status-text {
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  display: inline; margin-left: 8px;
+}
+.dl-idle-text {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+}
+
+.dl-history { margin-top: 6px; }
+.dl-history-item {
+  display: flex; align-items: center; gap: 8px; padding: 2px 0;
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  border-bottom: 1px solid #1a2030;
+}
+.dl-history-item .dl-h-name { color: var(--bright); min-width: 120px; }
+.dl-history-item .dl-h-ok { color: var(--green); }
+.dl-history-item .dl-h-fail { color: var(--red); }
+
 /* ── Misc ── */
 .note { font-family: var(--mono); font-size: 9px; color: var(--dim); }
 .hidden { display: none !important; }
@@ -462,24 +550,37 @@ input.active-input { border-color: var(--cyan); }
           <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:9px;">--</span></div>
         </div>
       </div>
-      <!-- Downlink -->
+      <!-- Downlink (Live SSE) -->
       <div class="pnl">
         <div class="pnl-hdr">
           <span class="pnl-title">Downlink</span>
+          <span class="dl-status-dot" id="dl-status-dot"></span>
+          <span class="dl-status-label" id="dl-status-label">IDLE</span>
           <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
         </div>
         <div class="pnl-body">
-          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
-            <span>Bytes Received</span>
-            <span id="dl-bytes">0 / 72,000</span>
+          <!-- Active transfer info (hidden when idle) -->
+          <div id="dl-active-wrap" class="dl-live-wrap" style="display:none;">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
+              <span id="dl-filename" style="color:var(--bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">--</span>
+              <span id="dl-bytes">0 / 0</span>
+            </div>
+            <div class="dl-progress-track">
+              <div class="dl-progress-fill" id="dl-bar" style="width:0%;"></div>
+            </div>
+            <div class="dl-stats">
+              <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
+              <div><div style="color:var(--dim);">ETA</div><div id="dl-eta" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">sec</div></div>
+              <div><div style="color:var(--dim);">Elapsed</div><div id="dl-elapsed" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">sec</div></div>
+              <div><div style="color:var(--dim);">Progress</div><div id="dl-pct" style="color:var(--bright);">0%</div><div style="color:var(--dim);font-size:8px;">&nbsp;</div></div>
+            </div>
           </div>
-          <div class="prog-track"><div class="prog-fill" id="dl-bar" style="width:0%;"></div></div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;font-family:var(--mono);font-size:10px;">
-            <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
-            <div><div style="color:var(--dim);">Total</div><div id="dl-total-bytes" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">bytes</div></div>
-            <div><div style="color:var(--dim);">Failed</div><div id="dl-failed" style="color:var(--bright);">0</div><div style="color:var(--dim);font-size:8px;">transfers</div></div>
-            <div><div style="color:var(--dim);">Cmds</div><div id="ul-cmds" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">acked</div></div>
+          <!-- Idle message (shown when no transfer active) -->
+          <div id="dl-idle-wrap" class="dl-idle-text">
+            <span class="dl-status-dot"></span> Waiting for CubeSat downlink&hellip;
           </div>
+          <!-- Transfer history -->
+          <div class="dl-history" id="dl-history"></div>
         </div>
       </div>
     </div>
@@ -531,24 +632,11 @@ input.active-input { border-color: var(--cyan); }
     <div class="pnl-body">
       <div id="route-change-warning"></div>
       <div class="mosaic-controls">
-        <button id="btn-zoom-in" onclick="mosaicZoom(1.3)" title="Zoom In">+</button>
-        <button id="btn-zoom-out" onclick="mosaicZoom(1/1.3)" title="Zoom Out">-</button>
-        <button id="btn-fit" onclick="mosaicFit()" title="Fit to view">FIT</button>
         <button id="btn-set-landing" onclick="mosaicSetMode('landing')" title="Click mosaic to set landing point">SET LANDING</button>
         <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
         <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
-        <div class="overlay-toggles">
-          <label><input type="checkbox" id="chk-hazard" checked onchange="mosaicRedraw()">HAZARD</label>
-          <label><input type="checkbox" id="chk-route" checked onchange="mosaicRedraw()">ROUTE</label>
-          <label><input type="checkbox" id="chk-changes" checked onchange="mosaicRedraw()">CHANGES</label>
-        </div>
       </div>
-      <div id="mosaic-viewer-wrap">
-        <canvas id="mosaic-canvas"></canvas>
-        <canvas id="mosaic-overlay"></canvas>
-        <div id="mosaic-tooltip"></div>
-        <canvas id="mosaic-minimap" width="120" height="120"></canvas>
-      </div>
+      <div id="mosaic-map"></div>
       <div class="heatmap-legend" style="margin-top:4px;">
         <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;opacity:0.6;"></span>Safe(1)</div>
         <div class="hl-item"><span class="hl-swatch" style="background:#ffaa00;opacity:0.6;"></span>Mod(5)</div>
@@ -556,8 +644,13 @@ input.active-input { border-color: var(--cyan); }
         <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;opacity:0.6;"></span>Hazard(20)</div>
         <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid #ff4444;"></span>Impass</div>
         <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurv</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#00cc44;opacity:0.6;"></span>Gentle(&lt;15°)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#cccc00;opacity:0.6;"></span>Mod(15-30°)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#cc4400;opacity:0.6;"></span>Steep(30-45°)</div>
+        <div class="hl-item"><span class="hl-swatch" style="background:#000000;"></span>Impass(&gt;45°)</div>
       </div>
       <div class="note" style="margin-top:2px;">Click: <span style="color:var(--green);">SET LANDING</span> then click mosaic for L, <span style="color:var(--red);">SET TARGET</span> then click for T</div>
+      <div id="hazard-sidebar"></div>
     </div>
   </div>
 
@@ -1397,24 +1490,72 @@ function mosaicSetMode(mode) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INTERACTIVE MOSAIC VIEWER — Pan/zoom canvas with hazard, route, change overlays
+// INTERACTIVE MOSAIC VIEWER — Leaflet.js with CRS.Simple (pixel coordinates)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let _mosaicImg       = null;  // HTMLImageElement of the mosaic canvas
 let _mosaicInfo      = null;  // from /api/mosaic_info
 let _heatmapData     = null;  // from /api/cost_grid
 let _mosaicRouteData = null;  // from /api/routes
 let _mosaicLastCount = 0;     // last known image count (to detect changes)
+let _hazardDetections = [];   // from /api/yolo_detections_mosaic
 
-// Transform state for pan/zoom
-let _mvScale   = 1.0;
-let _mvOffsetX = 0;
-let _mvOffsetY = 0;
+// Leaflet map and layers
+let _leafletMap = null;
+let _mosaicImageLayer = null;
+let _hazardMarkersLayer = null;
+let _costGridLayer = null;
+let _slopeGridLayer = null;
+let _routeLayer = null;
+let _changeLayer = null;
+let _landingMarker = null;
+let _targetMarker = null;
 
-// Dragging state
-let _mvDragging = false;
-let _mvDragStartX = 0, _mvDragStartY = 0;
-let _mvDragOffX = 0, _mvDragOffY = 0;
+// Catmull-Rom spline interpolation for smooth routes
+function catmullRomSpline(points, numSegments) {
+  if (points.length < 2) return points;
+  const result = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[Math.min(points.length - 1, i + 1)];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    for (let t = 0; t < numSegments; t++) {
+      const s = t / numSegments;
+      const s2 = s * s, s3 = s2 * s;
+      const x = 0.5 * ((2*p1[0]) + (-p0[0]+p2[0])*s + (2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*s2 + (-p0[0]+3*p1[0]-3*p2[0]+p3[0])*s3);
+      const y = 0.5 * ((2*p1[1]) + (-p0[1]+p2[1])*s + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*s2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*s3);
+      result.push([x, y]);
+    }
+  }
+  result.push(points[points.length - 1]);
+  return result;
+}
+
+// Convert mosaic pixel coords (x=right, y=down) to Leaflet LatLng (y inverted)
+function mosaicToLatLng(mx, my) {
+  return L.latLng(-my, mx);
+}
+
+function latLngToMosaic(latlng) {
+  return [latlng.lng, -latlng.lat];
+}
+
+// Hazard class → color mapping
+const HAZARD_CLASS_COLORS = {
+  crater: '#ff4444',
+  boulder: '#ff8800',
+  shadow: '#4488ff',
+  Impact_crater_10_100m: '#ff4444',
+  rock: '#ff8800',
+};
+
+function getHazardColor(cls) {
+  const lower = (cls || '').toLowerCase();
+  if (lower.includes('crater')) return '#ff4444';
+  if (lower.includes('boulder') || lower.includes('rock')) return '#ff8800';
+  if (lower.includes('shadow')) return '#4488ff';
+  return '#ffaa00';
+}
 
 function hmCellFill(cost, cls, surveyed) {
   if (!surveyed) return null;
@@ -1426,319 +1567,306 @@ function hmCellFill(cost, cls, surveyed) {
   return null;
 }
 
-// ─── Core draw ───────────────────────────────────────────────────────────────
-function mosaicDraw(now) {
-  const wrap = el('mosaic-viewer-wrap');
-  const canvas = el('mosaic-canvas');
-  const overlay = el('mosaic-overlay');
-  if (!wrap || !canvas || !overlay) return;
-
-  const W = wrap.clientWidth, H = wrap.clientHeight;
-  canvas.width = W; canvas.height = H;
-  overlay.width = W; overlay.height = H;
-
-  const ctx = canvas.getContext('2d');
-  const octx = overlay.getContext('2d');
-
-  // Clear
-  ctx.fillStyle = '#0d1220';
-  ctx.fillRect(0, 0, W, H);
-  octx.clearRect(0, 0, W, H);
-
-  // Draw mosaic image
-  if (_mosaicImg && _mosaicImg.complete && _mosaicImg.naturalWidth > 0) {
-    ctx.save();
-    ctx.translate(_mvOffsetX, _mvOffsetY);
-    ctx.scale(_mvScale, _mvScale);
-    ctx.drawImage(_mosaicImg, 0, 0);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#3a3f4b';
-    ctx.font = '14px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('No mosaic data — waiting for images', W/2, H/2);
-  }
-
-  // ── Overlay: Hazard grid ──
-  const showHazard = el('chk-hazard') && el('chk-hazard').checked;
-  if (showHazard && _heatmapData && _mosaicInfo) {
-    const gi = _mosaicInfo.grid;
-    const cellPx = gi.cell_size_px || 80;
-    const cg = _heatmapData;
-    const grid = cg.grid || [];
-    const cls = cg.classifications || [];
-    const coverage = cg.coverage || [];
-
-    octx.save();
-    octx.translate(_mvOffsetX, _mvOffsetY);
-    octx.scale(_mvScale, _mvScale);
-
-    const rows = grid.length, cols = rows > 0 ? grid[0].length : 0;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cost = grid[r][c];
-        const klass = cls[r] ? cls[r][c] : 'SAFE';
-        const surv = coverage[r] ? coverage[r][c] : false;
-        const fill = hmCellFill(cost, klass, surv);
-        if (fill) {
-          octx.fillStyle = fill;
-          octx.fillRect(c * cellPx, r * cellPx, cellPx, cellPx);
-        }
-      }
-    }
-
-    // Grid lines
-    octx.strokeStyle = 'rgba(58,63,75,0.3)'; octx.lineWidth = 0.5;
-    for (let r = 0; r <= rows; r++) {
-      octx.beginPath(); octx.moveTo(0, r*cellPx); octx.lineTo(cols*cellPx, r*cellPx); octx.stroke();
-    }
-    for (let c = 0; c <= cols; c++) {
-      octx.beginPath(); octx.moveTo(c*cellPx, 0); octx.lineTo(c*cellPx, rows*cellPx); octx.stroke();
-    }
-    octx.restore();
-  }
-
-  // ── Overlay: Routes ──
-  const showRoute = el('chk-route') && el('chk-route').checked;
-  if (showRoute && _mosaicRouteData && _mosaicInfo) {
-    const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
-    const routes = _mosaicRouteData;
-    const selected = routes.selected || 'safest';
-
-    const routeDefs = [
-      {key:'fastest', color:'#00ff88', dash:[8,6]},
-      {key:'safest',  color:'#4488ff', dash:[]},
-      {key:'balanced',color:'#ffaa00', dash:[3,4]},
-    ];
-
-    octx.save();
-    octx.translate(_mvOffsetX, _mvOffsetY);
-    octx.scale(_mvScale, _mvScale);
-
-    for (const rd of routeDefs) {
-      const rdata = routes[rd.key];
-      if (!rdata) continue;
-      // Use mosaic_path if available, else grid path
-      const mpath = rdata.mosaic_path;
-      const gpath = rdata.path;
-      if ((!mpath || mpath.length < 2) && (!gpath || gpath.length < 2)) continue;
-
-      const isSel = rd.key === selected;
-      octx.globalAlpha = isSel ? 1.0 : 0.4;
-      octx.strokeStyle = rd.color;
-      octx.lineWidth = 3 / _mvScale;
-      octx.setLineDash(rd.dash.map(d => d / _mvScale));
-      octx.beginPath();
-
-      if (mpath && mpath.length >= 2) {
-        for (let i = 0; i < mpath.length; i++) {
-          if (i === 0) octx.moveTo(mpath[i][0], mpath[i][1]);
-          else octx.lineTo(mpath[i][0], mpath[i][1]);
-        }
-      } else {
-        for (let i = 0; i < gpath.length; i++) {
-          const px = gpath[i][1] * cellPx + cellPx/2;
-          const py = gpath[i][0] * cellPx + cellPx/2;
-          if (i === 0) octx.moveTo(px, py); else octx.lineTo(px, py);
-        }
-      }
-      octx.stroke();
-      octx.setLineDash([]);
-    }
-    octx.globalAlpha = 1.0;
-    octx.restore();
-  }
-
-  // ── Overlay: Change bboxes ──
-  const showChanges = el('chk-changes') && el('chk-changes').checked;
-  if (showChanges && _heatmapData) {
-    const changeCells = _heatmapData.change_cells || [];
-    if (changeCells.length > 0 && _mosaicInfo) {
-      const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
-      octx.save();
-      octx.translate(_mvOffsetX, _mvOffsetY);
-      octx.scale(_mvScale, _mvScale);
-      const pulse = (Math.sin((now || 0) / 1000 * Math.PI) + 1) / 2;
-      octx.strokeStyle = `rgba(255,149,0,${0.4 + pulse * 0.5})`;
-      octx.lineWidth = 2 / _mvScale;
-      for (const cc of changeCells) {
-        const r = cc[0], c = cc[1];
-        octx.strokeRect(c * cellPx + 2, r * cellPx + 2, cellPx - 4, cellPx - 4);
-      }
-      octx.restore();
-    }
-  }
-
-  // ── Overlay: Landing (L) and Target (T) markers ──
-  octx.save();
-  octx.translate(_mvOffsetX, _mvOffsetY);
-  octx.scale(_mvScale, _mvScale);
-  const markerR = Math.max(8, 12 / _mvScale);
-  const pulseR = markerR + 4 * ((Math.sin((now || 0) / 400) + 1) / 2) / _mvScale;
-  if (_routeStartMosaic) {
-    _drawMosaicMarker(octx, _routeStartMosaic[0], _routeStartMosaic[1], 'L', '#00c875', pulseR);
-  }
-  if (_routeEndMosaic) {
-    _drawMosaicMarker(octx, _routeEndMosaic[0], _routeEndMosaic[1], 'T', '#ff3b3b', pulseR);
-  }
-  octx.restore();
-
-  // ── Minimap ──
-  _drawMinimap(W, H);
-
-  requestAnimationFrame(mosaicDraw);
+function slopeCellColor(slopeDeg) {
+  if (slopeDeg <= 0) return null;
+  if (slopeDeg <= 15) return 'rgba(0,204,68,0.3)';
+  if (slopeDeg <= 30) return 'rgba(204,204,0,0.4)';
+  if (slopeDeg <= 45) return 'rgba(204,68,0,0.5)';
+  return 'rgba(0,0,0,0.6)';
 }
 
-function _drawMosaicMarker(ctx, mx, my, label, color, radius) {
-  ctx.save();
-  const glowR = radius + 4 / _mvScale;
-  const grad = ctx.createRadialGradient(mx, my, radius * 0.5, mx, my, glowR);
-  grad.addColorStop(0, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(mx, my, glowR, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(mx, my, radius, 0, Math.PI*2);
-  ctx.fillStyle = color; ctx.fill();
-  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2 / _mvScale; ctx.stroke();
-  ctx.fillStyle = '#000';
-  ctx.font = `bold ${Math.max(10, radius)}px monospace`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, mx, my + 1);
-  ctx.restore();
-}
+// ─── Initialize Leaflet map ──────────────────────────────────────────────────
+(function initLeafletMap() {
+  const mapDiv = document.getElementById('mosaic-map');
+  if (!mapDiv) return;
 
-function _drawMinimap(viewW, viewH) {
-  const mc = el('mosaic-minimap');
-  if (!mc || !_mosaicImg || !_mosaicImg.naturalWidth) return;
-  const mctx = mc.getContext('2d');
-  const mw = mc.width, mh = mc.height;
-  mctx.fillStyle = '#0d1220'; mctx.fillRect(0, 0, mw, mh);
-
-  const iw = _mosaicImg.naturalWidth, ih = _mosaicImg.naturalHeight;
-  const scale = Math.min(mw / iw, mh / ih);
-  const dx = (mw - iw * scale) / 2, dy = (mh - ih * scale) / 2;
-  mctx.drawImage(_mosaicImg, dx, dy, iw * scale, ih * scale);
-
-  // Viewport rectangle
-  const vx = (-_mvOffsetX / _mvScale) * scale + dx;
-  const vy = (-_mvOffsetY / _mvScale) * scale + dy;
-  const vw = (viewW / _mvScale) * scale;
-  const vh = (viewH / _mvScale) * scale;
-  mctx.strokeStyle = 'rgba(0,212,255,0.8)'; mctx.lineWidth = 1;
-  mctx.strokeRect(vx, vy, vw, vh);
-}
-
-// ─── Zoom / Pan / Fit ────────────────────────────────────────────────────────
-function mosaicZoom(factor) {
-  const wrap = el('mosaic-viewer-wrap');
-  const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
-  const newScale = Math.max(0.1, Math.min(10, _mvScale * factor));
-  _mvOffsetX = cx - (cx - _mvOffsetX) * (newScale / _mvScale);
-  _mvOffsetY = cy - (cy - _mvOffsetY) * (newScale / _mvScale);
-  _mvScale = newScale;
-}
-
-function mosaicFit() {
-  if (!_mosaicImg || !_mosaicImg.naturalWidth) return;
-  const wrap = el('mosaic-viewer-wrap');
-  const W = wrap.clientWidth, H = wrap.clientHeight;
-  const iw = _mosaicImg.naturalWidth, ih = _mosaicImg.naturalHeight;
-  _mvScale = Math.min(W / iw, H / ih) * 0.95;
-  _mvOffsetX = (W - iw * _mvScale) / 2;
-  _mvOffsetY = (H - ih * _mvScale) / 2;
-}
-
-function mosaicRedraw() { /* next rAF loop will redraw */ }
-
-// ─── Mouse events for pan/zoom/click ─────────────────────────────────────────
-(function() {
-  const wrap = document.getElementById('mosaic-viewer-wrap');
-  const tooltip = document.getElementById('mosaic-tooltip');
-  if (!wrap) return;
-
-  wrap.addEventListener('mousedown', function(e) {
-    if (e.button !== 0) return;
-    _mvDragging = true;
-    _mvDragStartX = e.clientX; _mvDragStartY = e.clientY;
-    _mvDragOffX = _mvOffsetX; _mvDragOffY = _mvOffsetY;
+  _leafletMap = L.map('mosaic-map', {
+    crs: L.CRS.Simple,
+    minZoom: -3,
+    maxZoom: 4,
+    zoomSnap: 0.25,
+    zoomDelta: 0.5,
+    attributionControl: false,
   });
 
-  window.addEventListener('mousemove', function(e) {
-    if (_mvDragging) {
-      _mvOffsetX = _mvDragOffX + (e.clientX - _mvDragStartX);
-      _mvOffsetY = _mvDragOffY + (e.clientY - _mvDragStartY);
-    }
-  });
+  // Set initial view (will be updated when mosaic loads)
+  _leafletMap.setView([0, 0], 0);
 
-  window.addEventListener('mouseup', function() { _mvDragging = false; });
+  // Create overlay layer groups
+  _hazardMarkersLayer = L.layerGroup().addTo(_leafletMap);
+  _costGridLayer = L.layerGroup();
+  _slopeGridLayer = L.layerGroup();
+  _routeLayer = L.layerGroup().addTo(_leafletMap);
+  _changeLayer = L.layerGroup().addTo(_leafletMap);
 
-  wrap.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
-    const rect = wrap.getBoundingClientRect();
-    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-    const newScale = Math.max(0.1, Math.min(10, _mvScale * factor));
-    _mvOffsetX = cx - (cx - _mvOffsetX) * (newScale / _mvScale);
-    _mvOffsetY = cy - (cy - _mvOffsetY) * (newScale / _mvScale);
-    _mvScale = newScale;
-  }, {passive: false});
+  // Layer control
+  L.control.layers(null, {
+    'Hazard Markers': _hazardMarkersLayer,
+    'Cost Grid': _costGridLayer,
+    'Slopes': _slopeGridLayer,
+    'Routes': _routeLayer,
+    'Changes': _changeLayer,
+  }, { collapsed: false, position: 'topright' }).addTo(_leafletMap);
 
-  wrap.addEventListener('mousemove', function(e) {
-    if (_mvDragging) { tooltip.style.display = 'none'; return; }
-    if (!_mosaicInfo || !_heatmapData) { tooltip.style.display = 'none'; return; }
-
-    const rect = wrap.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    // Convert screen to mosaic coords
-    const mx = (px - _mvOffsetX) / _mvScale;
-    const my = (py - _mvOffsetY) / _mvScale;
-
-    const cellPx = (_mosaicInfo.grid || {}).cell_size_px || 80;
-    const col = Math.floor(mx / cellPx), row = Math.floor(my / cellPx);
-    const cg = _heatmapData;
-    const grid = cg.grid || [];
-    const cls = cg.classifications || [];
-    const coverage = cg.coverage || [];
-
-    if (row >= 0 && row < grid.length && col >= 0 && grid[row] && col < grid[row].length) {
-      const cost = grid[row][col];
-      const klass = cls[row] ? cls[row][col] : '?';
-      const surv = coverage[row] ? coverage[row][col] : false;
-      tooltip.innerHTML = surv
-        ? `Grid (${row},${col}) | Cost: ${cost} (${klass}) | Mosaic: ${Math.round(mx)},${Math.round(my)}`
-        : `Grid (${row},${col}) | <span style="color:#6b7280">UNSURVEYED</span>`;
-      tooltip.style.display = 'block';
-      tooltip.style.left = (px + 12) + 'px';
-      tooltip.style.top = (py - 24) + 'px';
-    } else {
-      tooltip.style.display = 'none';
-    }
-  });
-
-  wrap.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
-
-  wrap.addEventListener('click', function(e) {
+  // Click handler for landing/target mode
+  _leafletMap.on('click', function(e) {
     if (!_mosaicClickMode) return;
-    const rect = wrap.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    const mx = (px - _mvOffsetX) / _mvScale;
-    const my = (py - _mvOffsetY) / _mvScale;
-
+    const [mx, my] = latLngToMosaic(e.latlng);
     const fb = el('plan-routes-feedback');
+
     if (_mosaicClickMode === 'landing') {
       _routeStartMosaic = [mx, my];
       fb.textContent = `Landing(L) set at (${Math.round(mx)}, ${Math.round(my)})`;
       fb.style.color = 'var(--green)';
       _mosaicClickMode = null;
       el('btn-set-landing').classList.remove('active-mode');
+      _updateEndpointMarkers();
     } else if (_mosaicClickMode === 'target') {
       _routeEndMosaic = [mx, my];
       fb.textContent = `Target(T) set at (${Math.round(mx)}, ${Math.round(my)}) — auto-planning...`;
       fb.style.color = 'var(--red)';
       _mosaicClickMode = null;
       el('btn-set-target').classList.remove('active-mode');
-      planRoutes(null); // auto-plan when both are set
+      _updateEndpointMarkers();
+      planRoutes(null);
     }
   });
 })();
+
+function _updateEndpointMarkers() {
+  if (_landingMarker) { _leafletMap.removeLayer(_landingMarker); _landingMarker = null; }
+  if (_targetMarker) { _leafletMap.removeLayer(_targetMarker); _targetMarker = null; }
+
+  if (_routeStartMosaic) {
+    const ll = mosaicToLatLng(_routeStartMosaic[0], _routeStartMosaic[1]);
+    _landingMarker = L.circleMarker(ll, {
+      radius: 10, color: '#0a0e17', fillColor: '#00c875', fillOpacity: 1, weight: 2,
+    }).addTo(_leafletMap);
+    _landingMarker.bindTooltip('Landing (L)', { permanent: true, direction: 'top', className: '' });
+  }
+  if (_routeEndMosaic) {
+    const ll = mosaicToLatLng(_routeEndMosaic[0], _routeEndMosaic[1]);
+    _targetMarker = L.circleMarker(ll, {
+      radius: 10, color: '#0a0e17', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2,
+    }).addTo(_leafletMap);
+    _targetMarker.bindTooltip('Target (T)', { permanent: true, direction: 'top', className: '' });
+  }
+}
+
+// ─── Update mosaic base layer ────────────────────────────────────────────────
+function _updateMosaicImage(mosaicInfo) {
+  if (!_leafletMap) return;
+  const w = mosaicInfo.width, h = mosaicInfo.height;
+  if (w <= 0 || h <= 0) return;
+
+  const bounds = L.latLngBounds(
+    mosaicToLatLng(0, h),  // bottom-left
+    mosaicToLatLng(w, 0),  // top-right
+  );
+
+  const url = '/api/mosaic?t=' + Date.now();
+  if (_mosaicImageLayer) {
+    _mosaicImageLayer.setUrl(url);
+    _mosaicImageLayer.setBounds(bounds);
+  } else {
+    _mosaicImageLayer = L.imageOverlay(url, bounds).addTo(_leafletMap);
+    _mosaicImageLayer.bringToBack();
+    _leafletMap.fitBounds(bounds);
+  }
+}
+
+// ─── Update hazard markers from YOLO detections ──────────────────────────────
+function _updateHazardMarkers(detections) {
+  _hazardMarkersLayer.clearLayers();
+  const sidebar = el('hazard-sidebar');
+  let sidebarHtml = '';
+
+  for (const det of detections) {
+    const [mcx, mcy] = det.center_mosaic;
+    const color = getHazardColor(det.class);
+    const ll = mosaicToLatLng(mcx, mcy);
+
+    // Circle marker at detection center
+    const marker = L.circleMarker(ll, {
+      radius: 6, color: color, fillColor: color, fillOpacity: 0.7, weight: 2,
+    });
+    marker.bindPopup(
+      `<b>${det.class}</b><br>` +
+      `Confidence: ${(det.confidence * 100).toFixed(0)}%<br>` +
+      `Source: ${det.source_image}<br>` +
+      `Position: (${Math.round(mcx)}, ${Math.round(mcy)})`
+    );
+    _hazardMarkersLayer.addLayer(marker);
+
+    // Bounding box rectangle
+    if (det.bbox_mosaic) {
+      const [bx1, by1, bx2, by2] = det.bbox_mosaic;
+      const rectBounds = L.latLngBounds(
+        mosaicToLatLng(bx1, by2),
+        mosaicToLatLng(bx2, by1),
+      );
+      const rect = L.rectangle(rectBounds, {
+        color: color, weight: 1, fillOpacity: 0.1, dashArray: '4 2',
+      });
+      _hazardMarkersLayer.addLayer(rect);
+    }
+
+    // Sidebar entry
+    sidebarHtml += `<div class="hazard-item" onclick="_leafletMap.flyTo(L.latLng(${-mcy},${mcx}), 1)">` +
+      `<span class="hazard-dot" style="background:${color};"></span>` +
+      `<span class="hazard-class">${det.class}</span>` +
+      `<span>${det.source_image}</span>` +
+      `<span class="hazard-conf">${(det.confidence * 100).toFixed(0)}%</span>` +
+      `</div>`;
+  }
+
+  if (sidebar) {
+    sidebar.innerHTML = detections.length
+      ? `<div style="padding:4px 8px;font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--border);">${detections.length} Detection(s)</div>` + sidebarHtml
+      : '';
+  }
+}
+
+// ─── Update cost grid overlay ────────────────────────────────────────────────
+function _updateCostGrid(heatmapData, mosaicInfo) {
+  _costGridLayer.clearLayers();
+  if (!heatmapData || !mosaicInfo) return;
+
+  const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
+  const grid = heatmapData.grid || [];
+  const cls = heatmapData.classifications || [];
+  const coverage = heatmapData.coverage || [];
+  const rows = grid.length;
+  if (rows === 0) return;
+  const cols = grid[0].length;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cost = grid[r][c];
+      const klass = cls[r] ? cls[r][c] : 'SAFE';
+      const surv = coverage[r] ? coverage[r][c] : false;
+      const fill = hmCellFill(cost, klass, surv);
+      if (fill) {
+        const bounds = L.latLngBounds(
+          mosaicToLatLng(c * cellPx, (r + 1) * cellPx),
+          mosaicToLatLng((c + 1) * cellPx, r * cellPx),
+        );
+        const rect = L.rectangle(bounds, {
+          color: 'rgba(58,63,75,0.3)', weight: 0.5, fillColor: fill, fillOpacity: 1,
+          fill: true,
+        });
+        rect.bindPopup(`Grid (${r},${c})<br>Cost: ${cost}<br>Class: ${klass}<br>${surv ? 'Surveyed' : 'Unsurveyed'}`);
+        _costGridLayer.addLayer(rect);
+      }
+    }
+  }
+}
+
+// ─── Update slope grid overlay ───────────────────────────────────────────────
+async function _updateSlopeGrid(mosaicInfo) {
+  _slopeGridLayer.clearLayers();
+  if (!mosaicInfo) return;
+
+  try {
+    const r = await fetch('/api/slope_grid');
+    if (!r.ok) return;
+    const d = await r.json();
+    const slopeGrid = d.grid || [];
+    const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
+
+    for (let row = 0; row < slopeGrid.length; row++) {
+      for (let col = 0; col < (slopeGrid[row] || []).length; col++) {
+        const slope = slopeGrid[row][col];
+        const fill = slopeCellColor(slope);
+        if (fill) {
+          const bounds = L.latLngBounds(
+            mosaicToLatLng(col * cellPx, (row + 1) * cellPx),
+            mosaicToLatLng((col + 1) * cellPx, row * cellPx),
+          );
+          const rect = L.rectangle(bounds, {
+            color: 'transparent', weight: 0, fillColor: fill, fillOpacity: 1,
+          });
+          rect.bindPopup(`Slope: ${slope.toFixed(1)}°`);
+          _slopeGridLayer.addLayer(rect);
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+// ─── Update route overlays ───────────────────────────────────────────────────
+function _updateRoutes(routes, mosaicInfo) {
+  _routeLayer.clearLayers();
+  if (!routes || !mosaicInfo) return;
+
+  const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
+  const selected = routes.selected || 'safest';
+
+  const routeDefs = [
+    {key:'fastest', color:'#00ff88', dashArray:'8 6', weight: 3},
+    {key:'safest',  color:'#4488ff', dashArray:null,  weight: 3},
+    {key:'balanced',color:'#ffaa00', dashArray:'4 4', weight: 3},
+  ];
+
+  for (const rd of routeDefs) {
+    const rdata = routes[rd.key];
+    if (!rdata) continue;
+    if (_mosaicShowOnlyRoute && _mosaicShowOnlyRoute !== rd.key) continue;
+
+    const mpath = rdata.mosaic_path;
+    const gpath = rdata.path;
+    if ((!mpath || mpath.length < 2) && (!gpath || gpath.length < 2)) continue;
+
+    let rawPoints;
+    if (mpath && mpath.length >= 2) {
+      rawPoints = mpath.map(p => [p[0], p[1]]);
+    } else {
+      rawPoints = gpath.map(p => [p[1] * cellPx + cellPx/2, p[0] * cellPx + cellPx/2]);
+    }
+
+    // Apply Catmull-Rom spline for smooth curves
+    const smoothPoints = catmullRomSpline(rawPoints, 4);
+    const latlngs = smoothPoints.map(p => mosaicToLatLng(p[0], p[1]));
+
+    const isSel = rd.key === selected;
+    const line = L.polyline(latlngs, {
+      color: rd.color,
+      weight: isSel ? rd.weight + 1 : rd.weight,
+      opacity: isSel ? 1.0 : 0.4,
+      dashArray: rd.dashArray,
+      lineCap: 'round',
+      lineJoin: 'round',
+    });
+    line.bindPopup(`<b>${(rdata.name || rd.key).toUpperCase()}</b><br>Length: ${rdata.path_length_cells || '--'} cells<br>Cost: ${rdata.total_cost || '--'}`);
+    _routeLayer.addLayer(line);
+  }
+}
+
+// ─── Update change overlays ──────────────────────────────────────────────────
+function _updateChanges(heatmapData, mosaicInfo) {
+  _changeLayer.clearLayers();
+  if (!heatmapData || !mosaicInfo) return;
+
+  const changeCells = heatmapData.change_cells || [];
+  const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
+
+  for (const cc of changeCells) {
+    const r = cc[0], c = cc[1];
+    const bounds = L.latLngBounds(
+      mosaicToLatLng(c * cellPx + 2, (r + 1) * cellPx - 2),
+      mosaicToLatLng((c + 1) * cellPx - 2, r * cellPx + 2),
+    );
+    const rect = L.rectangle(bounds, {
+      color: '#ff9500', weight: 2, fillOpacity: 0.15, dashArray: '4 4',
+    });
+    rect.bindPopup(`Change detected at (${r},${c})`);
+    _changeLayer.addLayer(rect);
+  }
+}
+
+function mosaicRedraw() {
+  // Trigger layer updates on next poll
+}
 
 // ─── Mosaic data polling ─────────────────────────────────────────────────────
 async function pollCostHeatmap() {
@@ -1753,12 +1881,7 @@ async function pollCostHeatmap() {
       // Reload mosaic image if count changed
       if (d.image_count > 0 && d.image_count !== _mosaicLastCount) {
         _mosaicLastCount = d.image_count;
-        const img = new Image();
-        img.onload = function() {
-          _mosaicImg = img;
-          if (_mosaicLastCount === 1) mosaicFit(); // auto-fit on first image
-        };
-        img.src = '/api/mosaic?t=' + Date.now();
+        _updateMosaicImage(d);
       }
     }
   } catch(e) {}
@@ -1770,6 +1893,8 @@ async function pollCostHeatmap() {
       const d = await r.json();
       _heatmapData = d;
       renderQuadrantSummary(d);
+      _updateCostGrid(d, _mosaicInfo);
+      _updateChanges(d, _mosaicInfo);
     }
   } catch(e) {}
 
@@ -1780,12 +1905,25 @@ async function pollCostHeatmap() {
       const rd = await r2.json();
       _mosaicRouteData = rd;
       _lastRouteData = rd;
+      _updateRoutes(rd, _mosaicInfo);
     }
   } catch(e) {}
-}
 
-// Start animation loop
-requestAnimationFrame(mosaicDraw);
+  // Poll YOLO detections in mosaic coords
+  try {
+    const r3 = await fetch('/api/yolo_detections_mosaic');
+    if (r3.ok) {
+      const d3 = await r3.json();
+      _hazardDetections = d3.detections || [];
+      _updateHazardMarkers(_hazardDetections);
+    }
+  } catch(e) {}
+
+  // Poll slope grid
+  if (_mosaicInfo) {
+    _updateSlopeGrid(_mosaicInfo);
+  }
+}
 
 // ─── Quadrant summary (dynamic grid) ─────────────────────────────────────────
 function renderQuadrantSummary(data) {
@@ -2523,6 +2661,108 @@ setInterval(pollCostHeatmap, POLL_HEATMAP_MS);
 setInterval(pollChanges,     POLL_CHANGES_MS);
 setInterval(pollShadow,      POLL_HEATMAP_MS);
 setInterval(pollYolo,        POLL_HEATMAP_MS);
+
+// ── Live Downlink SSE ──
+(function initDownlinkSSE() {
+  const sse = new EventSource('/api/downlink_stream');
+  const dotEl     = document.getElementById('dl-status-dot');
+  const labelEl   = document.getElementById('dl-status-label');
+  const badgeEl   = document.getElementById('dl-rate-badge');
+  const activeEl  = document.getElementById('dl-active-wrap');
+  const idleEl    = document.getElementById('dl-idle-wrap');
+  const fnameEl   = document.getElementById('dl-filename');
+  const bytesEl   = document.getElementById('dl-bytes');
+  const barEl     = document.getElementById('dl-bar');
+  const rateEl    = document.getElementById('dl-rate');
+  const etaEl     = document.getElementById('dl-eta');
+  const elapsedEl = document.getElementById('dl-elapsed');
+  const pctEl     = document.getElementById('dl-pct');
+  const histEl    = document.getElementById('dl-history');
+
+  function fmtBytes(n) {
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024)    return (n / 1024).toFixed(1) + ' KB';
+    return n.toLocaleString() + ' B';
+  }
+  function fmtRate(bps) {
+    if (bps >= 1024) return (bps / 1024).toFixed(1) + ' KB/s';
+    return Math.round(bps) + ' B/s';
+  }
+
+  const STATUS_COLORS = {
+    idle:       '#555',
+    receiving:  '#00e5ff',
+    validating: '#ffab00',
+    processing: '#ffab00',
+    complete:   '#00e676',
+    failed:     '#ff1744'
+  };
+
+  sse.onmessage = function(ev) {
+    const d = JSON.parse(ev.data);
+    const s = d.status;
+
+    // Status dot + label
+    dotEl.style.background = STATUS_COLORS[s] || '#555';
+    dotEl.classList.toggle('dl-pulse', s === 'receiving');
+    labelEl.textContent = s.toUpperCase();
+
+    if (s === 'idle') {
+      activeEl.style.display = 'none';
+      idleEl.style.display = '';
+      badgeEl.textContent = '-- B/s';
+      return;
+    }
+
+    // Show active panel
+    activeEl.style.display = '';
+    idleEl.style.display = 'none';
+
+    fnameEl.textContent = d.filename || '--';
+    bytesEl.textContent = fmtBytes(d.bytes_received) + ' / ' + fmtBytes(d.declared_size);
+    barEl.style.width = d.pct + '%';
+
+    // Toggle CSS classes for bar color/shimmer
+    barEl.classList.toggle('complete', s === 'complete');
+    barEl.classList.toggle('failed', s === 'failed');
+
+    rateEl.textContent = fmtRate(d.rate_bps);
+    badgeEl.textContent = fmtRate(d.rate_bps);
+    etaEl.textContent = d.eta_sec > 0 ? d.eta_sec.toFixed(1) : '--';
+    elapsedEl.textContent = d.elapsed_sec > 0 ? d.elapsed_sec.toFixed(1) : '--';
+    pctEl.textContent = d.pct + '%';
+  };
+
+  // Also fetch transfer history on load and periodically
+  async function fetchHistory() {
+    try {
+      const r = await fetch('/api/downlink_history');
+      const data = await r.json();
+      if (!data.history || !data.history.length) {
+        histEl.innerHTML = '';
+        return;
+      }
+      histEl.innerHTML = data.history.slice().reverse().map(h => {
+        const ok = h.status === 'complete';
+        const t = new Date(h.timestamp * 1000).toLocaleTimeString();
+        return `<div class="dl-history-item">
+          <span class="dl-h-name">${h.filename}</span>
+          <span class="${ok ? 'dl-h-ok' : 'dl-h-fail'}">${ok ? 'OK' : 'FAIL'}</span>
+          <span>${fmtBytes(h.size)}</span>
+          <span>${h.duration_sec}s</span>
+          <span>${t}</span>
+        </div>`;
+      }).join('');
+    } catch(e) { /* silent */ }
+  }
+  fetchHistory();
+  setInterval(fetchHistory, 5000);
+
+  sse.onerror = function() {
+    labelEl.textContent = 'SSE DISCONNECTED';
+    dotEl.style.background = '#ff1744';
+  };
+})();
 
 // Auto-discover CubeSat on page load
 mcDiscover();

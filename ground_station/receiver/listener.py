@@ -21,6 +21,7 @@ import threading
 
 import config
 import protocol
+from receiver.downlink_state import get_state as get_downlink_state
 from receiver.packet_handler import validate_transfer
 from receiver.quality_check import run_ground_quality_check
 from receiver.telemetry_parser import parse_and_save_telemetry
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Callback set by server.py so the pipeline can be triggered without a circular import
 _pipeline_callback = None
+_pipeline_lock = threading.Lock()
 
 
 def set_pipeline_callback(cb):
@@ -103,7 +105,9 @@ def _handle_connection(conn, addr):
 
 def _handle_image(conn, filename, declared_size, declared_md5, metadata):
     """Receive image bytes, validate, save, trigger pipeline."""
-    logger.info(f"Receiving image '{filename}' ({declared_size} bytes, ~{declared_size/1200:.0f}s at 1200 B/s)")
+    logger.info(f"Receiving image '{filename}' ({declared_size:,} bytes)")
+    dl = get_downlink_state()
+    dl.start_transfer(filename, declared_size)
 
     try:
         data = b""
@@ -112,8 +116,10 @@ def _handle_image(conn, filename, declared_size, declared_md5, metadata):
             if not chunk:
                 break
             data += chunk
+            dl.update_progress(len(data))
     except Exception as e:
         logger.error(f"Error reading image bytes for '{filename}': {e}")
+        dl.set_status("failed", str(e))
         conn.sendall(protocol.NACK)
         return
 
@@ -122,13 +128,16 @@ def _handle_image(conn, filename, declared_size, declared_md5, metadata):
         logger.warning(
             f"Partial transfer '{filename}': {len(data):,} of {declared_size:,} bytes — discarded"
         )
+        dl.set_status("failed", f"Partial: {len(data)}/{declared_size}")
         conn.sendall(protocol.NACK)
         return
 
     # Validate MD5 and size
+    dl.set_status("validating")
     result = validate_transfer(data, declared_size, declared_md5, metadata)
     if not result.valid:
         logger.error(f"Validation failed for '{filename}': {result.reason}")
+        dl.set_status("failed", result.reason)
         conn.sendall(protocol.NACK)
         return
 
@@ -157,12 +166,22 @@ def _handle_image(conn, filename, declared_size, declared_md5, metadata):
     else:
         logger.info(f"Ground quality OK for '{filename}'")
 
-    # Trigger CV pipeline
+    # Trigger CV pipeline in background so we don't block the connection
+    dl.set_status("processing")
     if _pipeline_callback is not None:
-        try:
-            _pipeline_callback(save_path, metadata, quality)
-        except Exception as e:
-            logger.error(f"Pipeline callback failed for '{filename}': {e}", exc_info=True)
+        def _run_pipeline(path, meta, qual):
+            with _pipeline_lock:
+                try:
+                    _pipeline_callback(path, meta, qual)
+                except Exception as e:
+                    logger.error(f"Pipeline callback failed for '{os.path.basename(path)}': {e}", exc_info=True)
+                finally:
+                    dl.set_status("complete")
+
+        t = threading.Thread(target=_run_pipeline, args=(save_path, metadata, quality), daemon=True)
+        t.start()
+    else:
+        dl.set_status("complete")
 
 
 def _handle_telemetry(conn, filename, declared_size, declared_md5):

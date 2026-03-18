@@ -32,10 +32,10 @@ COST_HAZARD = 20
 COST_IMPASSABLE = 999
 
 # === HAZARD CLASSIFICATION THRESHOLDS ===
-LBP_VARIANCE_HIGH = 500        # LBP variance above this → rocky/hazardous texture
-LBP_VARIANCE_MODERATE = 200    # LBP variance above this → moderate texture
-EDGE_DENSITY_HIGH = 0.15       # Canny edge density above this → rough terrain
-EDGE_DENSITY_MODERATE = 0.08   # Canny edge density above this → moderate terrain
+LBP_VARIANCE_HIGH = 5.0        # LBP variance above this → rocky/hazardous texture
+LBP_VARIANCE_MODERATE = 3.0    # LBP variance above this → moderate texture
+EDGE_DENSITY_HIGH = 0.02       # Canny edge density above this → rough terrain
+EDGE_DENSITY_MODERATE = 0.005  # Canny edge density above this → moderate terrain
 
 # === CHANGE DETECTION ===
 CHANGE_THRESHOLD = 30              # Pixel difference (0-255) to count as changed
@@ -78,6 +78,27 @@ MOSAIC_EXPOSURE_GAIN_RANGE = (0.5, 2.0)  # Clamp exposure gain to this range
 # === DASHBOARD ===
 DASHBOARD_PORT = 3000
 DASHBOARD_REFRESH_SEC = 2
+
+# === UNCERTAINTY-AWARE COSTS ===
+UNCERTAINTY_WEIGHT = 3.0            # cost multiplier for low confidence
+UNSURVEYED_COST = 15                # base cost for unknown terrain (= SHADOW level)
+CONFIDENCE_OBS_BOOST = 0.1          # confidence boost per additional observation
+UNCERTAINTY_ENABLED = True
+
+# === SHADOW-BASED SLOPE ESTIMATION ===
+SUN_ELEVATION_DEG = 30.0            # degrees above horizon
+SUN_AZIMUTH_DEG = 180.0             # degrees from N, clockwise
+SLOPE_GENTLE_DEG = 15.0             # no penalty
+SLOPE_MODERATE_DEG = 30.0           # 2x cost
+SLOPE_STEEP_DEG = 45.0              # 5x cost, above = impassable
+SLOPE_ENABLED = True
+
+# === TRAVERSABILITY CNN ===
+CNN_MODEL_PATH = "models/traversability_model.pt"
+CNN_PATCH_SIZE = 64
+CNN_BLEND_WEIGHT = 0.4              # final = alpha*CNN + (1-alpha)*classical
+CNN_ENABLED = True                  # model trained on existing data
+CNN_BATCH_SIZE = 32
 
 # === LLM (optional) ===
 LLM_MODEL = "llama3.2"

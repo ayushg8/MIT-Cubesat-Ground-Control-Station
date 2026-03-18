@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Paths
 _MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+_TERRAIN_MODEL_PATH = os.path.join(_MODEL_DIR, "terrain_detector.pt")
 _LUNAR_MODEL_PATH = os.path.join(_MODEL_DIR, "lunar_detector.pt")
 _DETECTIONS_DIR = os.path.join(config.PROCESSED_DIR, "yolo_detections")
 
@@ -78,7 +79,13 @@ class YOLODetector:
         try:
             from ultralytics import YOLO
 
-            if os.path.exists(_LUNAR_MODEL_PATH):
+            if os.path.exists(_TERRAIN_MODEL_PATH):
+                # Prefer terrain model — trained on sandbox/desert + Pi camera images
+                self._model = YOLO(_TERRAIN_MODEL_PATH)
+                self._is_lunar = True  # same class structure
+                self._model_name = "terrain_yolov8"
+                logger.info(f"YOLO: loaded terrain model from {_TERRAIN_MODEL_PATH}")
+            elif os.path.exists(_LUNAR_MODEL_PATH):
                 self._model = YOLO(_LUNAR_MODEL_PATH)
                 self._is_lunar = True
                 self._model_name = "lunar_yolov8"
@@ -136,6 +143,11 @@ class YOLODetector:
             return []
 
         detections = []
+        # Get image dimensions for full-frame filter
+        img_check = cv2.imread(image_path)
+        img_h, img_w = (img_check.shape[:2]) if img_check is not None else (480, 640)
+        img_area = img_h * img_w
+
         for result in results:
             for box in result.boxes:
                 cls_id = int(box.cls[0])
@@ -147,6 +159,15 @@ class YOLODetector:
                 lunar_class = self._map_class(cls_name)
                 if lunar_class is None:
                     continue  # Skip irrelevant COCO classes
+
+                # Filter out full-frame detections (model noise, not real objects)
+                det_area = (x2 - x1) * (y2 - y1)
+                if det_area > img_area * 0.5:
+                    logger.debug(
+                        f"YOLO: skipping full-frame {lunar_class} "
+                        f"({det_area/img_area*100:.0f}% of image) in {os.path.basename(image_path)}"
+                    )
+                    continue
 
                 detections.append({
                     "class": lunar_class,
@@ -169,8 +190,10 @@ class YOLODetector:
                 return "crater"
             elif "boulder" in lower or "rock" in lower:
                 return "boulder"
-            elif "plain" in lower or "surface" in lower or "flat" in lower:
+            elif "sand" in lower or "plain" in lower or "surface" in lower or "flat" in lower:
                 return "plain"
+            elif "shadow" in lower:
+                return "shadow"
             else:
                 return "obstacle"
         else:
@@ -272,9 +295,18 @@ def fuse_classifications(
         agreement = True
 
     elif yolo_found_hazard and classical_class in ("SAFE", "SHADOW"):
-        # YOLO found something classical missed — upgrade caution
-        fused_class = "MODERATE"
-        fused_conf = round(yolo_max_conf * 0.7, 3)  # Tempered by disagreement
+        # YOLO found something classical missed — trust YOLO based on confidence
+        if yolo_max_conf > 0.6:
+            # High confidence YOLO detection overrides classical
+            best_yolo = max(yolo_hazards, key=lambda d: d["confidence"])
+            if best_yolo["class"] == "boulder":
+                fused_class = "IMPASSABLE"
+            else:
+                fused_class = "HAZARD"
+            fused_conf = round(yolo_max_conf * 0.85, 3)
+        else:
+            fused_class = "MODERATE"
+            fused_conf = round(yolo_max_conf * 0.7, 3)
         agreement = False
 
     elif not yolo_found_hazard and classical_is_hazardous:

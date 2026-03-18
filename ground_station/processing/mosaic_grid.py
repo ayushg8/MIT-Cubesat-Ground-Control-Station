@@ -43,6 +43,10 @@ class MosaicGrid:
         self._confidence_grid: np.ndarray | None = None
         # surveyed[r][c] = bool — True if any image covers this cell
         self._surveyed: np.ndarray | None = None
+        # observation_count[r][c] = int — number of times this cell has been observed
+        self._observation_count: np.ndarray | None = None
+        # slope_grid[r][c] = float degrees — estimated terrain slope
+        self._slope_grid: np.ndarray | None = None
 
         # Fine grid (20px cells) — for pixel-level segmentation routing
         self._fine_rows = 0
@@ -72,6 +76,8 @@ class MosaicGrid:
         new_hazard = [["SAFE"] * new_cols for _ in range(new_rows)]
         new_conf = np.zeros((new_rows, new_cols), dtype=np.float64)
         new_surv = np.zeros((new_rows, new_cols), dtype=bool)
+        new_obs = np.zeros((new_rows, new_cols), dtype=np.int32)
+        new_slope = np.zeros((new_rows, new_cols), dtype=np.float32)
 
         # Copy old values
         copy_r = min(old_rows, new_rows)
@@ -80,6 +86,10 @@ class MosaicGrid:
             new_cost[:copy_r, :copy_c] = self._cost_grid[:copy_r, :copy_c]
             new_conf[:copy_r, :copy_c] = self._confidence_grid[:copy_r, :copy_c]
             new_surv[:copy_r, :copy_c] = self._surveyed[:copy_r, :copy_c]
+            if self._observation_count is not None:
+                new_obs[:copy_r, :copy_c] = self._observation_count[:copy_r, :copy_c]
+            if self._slope_grid is not None:
+                new_slope[:copy_r, :copy_c] = self._slope_grid[:copy_r, :copy_c]
             for r in range(copy_r):
                 for c in range(copy_c):
                     new_hazard[r][c] = self._hazard_grid[r][c]
@@ -90,6 +100,8 @@ class MosaicGrid:
         self._hazard_grid = new_hazard
         self._confidence_grid = new_conf
         self._surveyed = new_surv
+        self._observation_count = new_obs
+        self._slope_grid = new_slope
 
         # Fine grid
         new_fr = max(1, (canvas_h + FINE_CELL_PX - 1) // FINE_CELL_PX)
@@ -149,6 +161,8 @@ class MosaicGrid:
                     self._hazard_grid[r][c] = hazard_class
                     self._confidence_grid[r, c] = confidence
                 self._surveyed[r, c] = True
+                if self._observation_count is not None:
+                    self._observation_count[r, c] += 1
 
     # ─────────────────────────────────────────────────────────────────────
     # Pixel segmentation → fine grid
@@ -325,3 +339,152 @@ class MosaicGrid:
         mx = col * FINE_CELL_PX + FINE_CELL_PX / 2
         my = row * FINE_CELL_PX + FINE_CELL_PX / 2
         return (mx, my)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Uncertainty-aware effective cost grid
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_effective_cost_grid(self) -> np.ndarray:
+        """
+        Return cost grid adjusted for uncertainty, slope, and CNN traversability.
+        - Unsurveyed cells → UNSURVEYED_COST
+        - Surveyed cells → raw_cost × (1 + UNCERTAINTY_WEIGHT × (1 - adjusted_confidence))
+        - Slope multiplier applied on top
+        """
+        if self._cost_grid is None:
+            return np.full((1, 1), config.COST_SAFE, dtype=np.float32)
+
+        effective = self._cost_grid.astype(np.float32).copy()
+
+        if config.UNCERTAINTY_ENABLED:
+            for r in range(self._rows):
+                for c in range(self._cols):
+                    if not self._surveyed[r, c]:
+                        effective[r, c] = config.UNSURVEYED_COST
+                    else:
+                        obs = int(self._observation_count[r, c]) if self._observation_count is not None else 1
+                        adj_conf = min(1.0, self._confidence_grid[r, c] +
+                                       (obs - 1) * config.CONFIDENCE_OBS_BOOST)
+                        effective[r, c] = self._cost_grid[r, c] * (
+                            1.0 + config.UNCERTAINTY_WEIGHT * (1.0 - adj_conf)
+                        )
+
+        if config.SLOPE_ENABLED and self._slope_grid is not None:
+            for r in range(self._rows):
+                for c in range(self._cols):
+                    slope = self._slope_grid[r, c]
+                    effective[r, c] *= self._slope_cost_multiplier(slope)
+
+        return effective
+
+    @staticmethod
+    def _slope_cost_multiplier(slope_deg: float) -> float:
+        """Return cost multiplier based on terrain slope."""
+        if slope_deg <= config.SLOPE_GENTLE_DEG:
+            return 1.0
+        elif slope_deg <= config.SLOPE_MODERATE_DEG:
+            return 2.0
+        elif slope_deg <= config.SLOPE_STEEP_DEG:
+            return 5.0
+        else:
+            return 999.0
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Slope application
+    # ─────────────────────────────────────────────────────────────────────
+
+    def apply_slope(self, mosaic_bbox: tuple, slope_map: np.ndarray):
+        """
+        Project a slope map onto the grid cells within mosaic_bbox.
+        slope_map: (h, w) float array of slope in degrees, same pixel dims as mosaic_bbox.
+        """
+        if self._slope_grid is None or slope_map is None:
+            return
+
+        x, y, w, h = mosaic_bbox
+        r_min = max(0, y // CELL_PX)
+        r_max = min(self._rows - 1, (y + h - 1) // CELL_PX)
+        c_min = max(0, x // CELL_PX)
+        c_max = min(self._cols - 1, (x + w - 1) // CELL_PX)
+
+        img_h, img_w = slope_map.shape[:2]
+
+        for r in range(r_min, r_max + 1):
+            for c in range(c_min, c_max + 1):
+                # Pixel range in mosaic coords
+                py0 = r * CELL_PX - y
+                px0 = c * CELL_PX - x
+                py1 = py0 + CELL_PX
+                px1 = px0 + CELL_PX
+
+                py0 = max(0, py0)
+                px0 = max(0, px0)
+                py1 = min(img_h, py1)
+                px1 = min(img_w, px1)
+
+                if py1 <= py0 or px1 <= px0:
+                    continue
+
+                patch = slope_map[py0:py1, px0:px1]
+                max_slope = float(np.max(patch))
+                # Keep worst (steepest) slope seen
+                self._slope_grid[r, c] = max(self._slope_grid[r, c], max_slope)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # CNN traversability blending
+    # ─────────────────────────────────────────────────────────────────────
+
+    def apply_cnn_traversability(self, mosaic_bbox: tuple, trav_grid: np.ndarray):
+        """
+        Blend CNN traversability predictions with classical costs.
+        trav_grid: (h, w) float array of traversability scores 0.0-1.0.
+        final = alpha * CNN_cost + (1-alpha) * classical_cost
+        """
+        if self._cost_grid is None or trav_grid is None:
+            return
+
+        alpha = config.CNN_BLEND_WEIGHT
+        x, y, w, h = mosaic_bbox
+        r_min = max(0, y // CELL_PX)
+        r_max = min(self._rows - 1, (y + h - 1) // CELL_PX)
+        c_min = max(0, x // CELL_PX)
+        c_max = min(self._cols - 1, (x + w - 1) // CELL_PX)
+
+        trav_h, trav_w = trav_grid.shape[:2]
+
+        for r in range(r_min, r_max + 1):
+            for c in range(c_min, c_max + 1):
+                py0 = r * CELL_PX - y
+                px0 = c * CELL_PX - x
+                py1 = py0 + CELL_PX
+                px1 = px0 + CELL_PX
+
+                py0 = max(0, py0)
+                px0 = max(0, px0)
+                py1 = min(trav_h, py1)
+                px1 = min(trav_w, px1)
+
+                if py1 <= py0 or px1 <= px0:
+                    continue
+
+                patch = trav_grid[py0:py1, px0:px1]
+                avg_trav = float(np.mean(patch))
+                # Convert traversability (0=impassable, 1=safe) to cost
+                cnn_cost = config.COST_SAFE + (config.COST_IMPASSABLE - config.COST_SAFE) * (1.0 - avg_trav)
+                classical_cost = float(self._cost_grid[r, c])
+                blended = alpha * cnn_cost + (1.0 - alpha) * classical_cost
+                self._cost_grid[r, c] = int(round(blended))
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Additional accessors
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_observation_count(self) -> np.ndarray:
+        if self._observation_count is None:
+            return np.zeros((1, 1), dtype=np.int32)
+        return self._observation_count.copy()
+
+    def get_slope_grid(self) -> np.ndarray:
+        if self._slope_grid is None:
+            return np.zeros((1, 1), dtype=np.float32)
+        return self._slope_grid.copy()

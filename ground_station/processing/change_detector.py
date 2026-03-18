@@ -54,6 +54,8 @@ class ChangeDetector:
         pass_before: int,
         pass_after: int,
         all_cell_entries: list | None = None,
+        yolo_before: list | None = None,
+        yolo_after: list | None = None,
     ) -> dict | None:
         """
         Compare two real images of the same grid cell from different passes.
@@ -66,6 +68,8 @@ class ChangeDetector:
             pass_after:      Pass number of the later image.
             all_cell_entries: Optional list of all image index entries for this cell
                               (for persistence checking). Each entry has "pass" and "path".
+            yolo_before: Optional YOLO detections for prev image (list of dicts with bbox, class).
+            yolo_after:  Optional YOLO detections for new image.
 
         Returns dict with change_map_path, change_events, change_summary,
         or None if either image cannot be read.
@@ -160,6 +164,10 @@ class ChangeDetector:
                 "description": description,
             })
             event_id += 1
+
+        # ── YOLO-assisted classification ──
+        if change_events and (yolo_before or yolo_after):
+            _classify_changes_with_yolo(change_events, yolo_before or [], yolo_after or [])
 
         # ── Persistence check ──
         if change_events and all_cell_entries and len(all_cell_entries) >= 3:
@@ -439,10 +447,106 @@ def _check_persistence(
     )
 
 
-def _describe(change_type: str, area_cm2: float | None) -> str:
+def _bbox_iou(a, b):
+    """Intersection-over-union for two [x, y, w, h] bboxes."""
+    ax1, ay1 = a[0], a[1]
+    ax2, ay2 = a[0] + a[2], a[1] + a[3]
+    bx1, by1 = b[0], b[1]
+    bx2, by2 = b[0] + b[2], b[1] + b[3]
+    ix1 = max(ax1, bx1); iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2); iy2 = min(ay2, by2)
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    union = a[2] * a[3] + b[2] * b[3] - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _yolo_bbox_to_xywh(det):
+    """Convert YOLO [x1, y1, x2, y2] bbox to [x, y, w, h]."""
+    x1, y1, x2, y2 = det["bbox"]
+    return [x1, y1, x2 - x1, y2 - y1]
+
+
+def _classify_changes_with_yolo(change_events, yolo_before, yolo_after):
+    """
+    For each SSIM change region, check if it overlaps a YOLO detection
+    that is NEW in the after image (not present in before). If so, classify
+    the change with the YOLO object class instead of generic darkened/brightened.
+    """
+    IOU_THRESH = 0.15  # low threshold — change bbox and YOLO bbox won't align perfectly
+
+    before_boxes = [_yolo_bbox_to_xywh(d) for d in yolo_before]
+
+    for event in change_events:
+        evt_bbox = event["bbox"]  # [x, y, w, h]
+        best_match = None
+        best_conf = 0.0
+
+        for det in yolo_after:
+            det_xywh = _yolo_bbox_to_xywh(det)
+            iou = _bbox_iou(evt_bbox, det_xywh)
+            if iou < IOU_THRESH:
+                continue
+
+            # Check this detection is NEW — not present in before image
+            is_new = True
+            for bb in before_boxes:
+                if _bbox_iou(det_xywh, bb) > 0.3:
+                    is_new = False
+                    break
+
+            if is_new and det["confidence"] > best_conf:
+                best_match = det
+                best_conf = det["confidence"]
+
+        if best_match:
+            event["yolo_class"] = best_match["class"]
+            event["yolo_confidence"] = best_match["confidence"]
+            event["yolo_original_class"] = best_match.get("original_class", "")
+            event["description"] = _describe(
+                event["type"], event.get("area_cm2"), best_match["class"], best_match["confidence"]
+            )
+        else:
+            # Check if a before-only detection disappeared at this location
+            for det in yolo_before:
+                det_xywh = _yolo_bbox_to_xywh(det)
+                iou = _bbox_iou(evt_bbox, det_xywh)
+                if iou < IOU_THRESH:
+                    continue
+                # Verify it's gone in the after image
+                still_there = False
+                for aft in yolo_after:
+                    if _bbox_iou(det_xywh, _yolo_bbox_to_xywh(aft)) > 0.3:
+                        still_there = True
+                        break
+                if not still_there:
+                    event["yolo_class"] = f"{det['class']}_removed"
+                    event["yolo_confidence"] = det["confidence"]
+                    event["description"] = _describe(
+                        "removed", event.get("area_cm2"),
+                        det["class"], det["confidence"]
+                    )
+                    break
+
+    classified = sum(1 for e in change_events if "yolo_class" in e)
+    if classified:
+        logger.info(f"YOLO-assisted change classification: {classified}/{len(change_events)} events classified")
+
+
+def _describe(change_type: str, area_cm2: float | None,
+              yolo_class: str | None = None, yolo_conf: float | None = None) -> str:
     area_str = f"{area_cm2:.1f} cm²" if area_cm2 is not None else "unknown area"
+
+    if yolo_class and yolo_conf is not None:
+        if change_type == "removed":
+            return (f"{yolo_class.upper()} disappeared ({area_str}) — "
+                    f"YOLO confidence {yolo_conf:.0%}")
+        return (f"New {yolo_class.upper()} detected ({area_str}) — "
+                f"YOLO confidence {yolo_conf:.0%}")
+
     if change_type == "darkened":
         return f"New dark region ({area_str}) — possible new crater, boulder, or shadow shift"
+    elif change_type == "removed":
+        return f"Object removed ({area_str})"
     else:
         return f"New bright region ({area_str}) — possible removed obstacle or lighting change"
 

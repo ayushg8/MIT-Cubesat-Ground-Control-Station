@@ -40,6 +40,8 @@ from processing.route_planner import RoutePlanner
 from processing.shadow_detector import ShadowDetector
 from processing.pixel_segmenter import PixelSegmenter
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
+from processing.slope_estimator import SlopeEstimator
+from processing import ppo_planner
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,7 @@ class Pipeline:
         self._change_detector    = ChangeDetector()
         self._route_planner      = RoutePlanner()
         self._pixel_segmenter    = PixelSegmenter()
+        self._slope_estimator    = SlopeEstimator()
 
         # YOLO detection state (accumulated across images)
         self._yolo_detections: dict = {}   # {"filename": [detection_dicts]}
@@ -80,6 +83,9 @@ class Pipeline:
         # Route endpoints — set from dashboard clicks (mosaic pixel coords)
         self._route_start_mosaic: list | None = None
         self._route_end_mosaic: list | None = None
+
+        # Load PPO planner model
+        ppo_planner.load_ppo_model()
 
         # Initialize grid from existing mosaic canvas
         cw, ch = self._stitcher.get_canvas_size()
@@ -156,6 +162,22 @@ class Pipeline:
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] shadow_detector FAILED: {e}", exc_info=True)
+
+        # ── 3b. Slope estimation (from shadow geometry) ──
+        if config.SLOPE_ENABLED and shadow_result is not None:
+            try:
+                shadow_mask = shadow_result.get("shadow_mask")
+                if shadow_mask is not None:
+                    slope_result = self._slope_estimator.estimate(shadow_mask)
+                    slope_map = slope_result.get("slope_map")
+                    if slope_map is not None:
+                        self._mosaic_grid.apply_slope(mosaic_bbox, slope_map)
+                        logger.info(
+                            f"Pipeline [{basename}] slope: "
+                            f"{len(slope_result.get('regions', []))} region(s)"
+                        )
+            except Exception as e:
+                logger.error(f"Pipeline [{basename}] slope_estimator FAILED: {e}", exc_info=True)
 
         # ── 4. Hazard classification ──
         # Derive a grid_cell from mosaic_bbox center for labeling
@@ -278,21 +300,40 @@ class Pipeline:
             except Exception as e:
                 logger.error(f"Pipeline [{basename}] pixel_segmenter FAILED: {e}", exc_info=True)
 
+        # ── 4d. CNN traversability (if enabled) ──
+        if config.CNN_ENABLED:
+            try:
+                import cv2
+                from processing import traversability_cnn
+                img = cv2.imread(image_path)
+                if img is not None:
+                    trav_grid = traversability_cnn.infer_grid(img)
+                    if trav_grid is not None:
+                        self._mosaic_grid.apply_cnn_traversability(mosaic_bbox, trav_grid)
+                        logger.info(f"Pipeline [{basename}] cnn: traversability applied")
+            except Exception as e:
+                logger.error(f"Pipeline [{basename}] traversability_cnn FAILED: {e}", exc_info=True)
+
         # ── Update image index ──
         pass_number = metadata.get("pass_number", 1)
         prev_entry = self._get_prev_entry(basename, pass_number)
         self._record_in_index(basename, pass_number, image_path, quality_score, mosaic_bbox)
 
-        # ── 5. Change detection ──
+        # ── 5. Change detection (YOLO-assisted) ──
         has_change = False
+        yolo_after = self._yolo_detections.get(basename, [])
         if prev_entry is not None:
             try:
                 prev_path = prev_entry["path"]
                 prev_pass = prev_entry["pass"]
+                prev_basename = os.path.basename(prev_path)
+                yolo_before = self._yolo_detections.get(prev_basename, [])
                 all_entries = self._image_index.get(basename, [])
                 change_result = self._change_detector.detect(
                     prev_path, image_path, grid_cell, prev_pass, pass_number,
                     all_cell_entries=all_entries,
+                    yolo_before=yolo_before,
+                    yolo_after=yolo_after,
                 )
                 if change_result and change_result["change_summary"]["total_events"] > 0:
                     has_change = True
@@ -318,8 +359,12 @@ class Pipeline:
             if prior_overlaps:
                 try:
                     prev = prior_overlaps[-1]  # most recent overlapping entry
+                    prev_basename_ovl = os.path.basename(prev.image_path)
+                    yolo_before_ovl = self._yolo_detections.get(prev_basename_ovl, [])
                     change_result = self._change_detector.detect(
                         prev.image_path, image_path, grid_cell, 0, pass_number,
+                        yolo_before=yolo_before_ovl,
+                        yolo_after=yolo_after,
                     )
                     if change_result and change_result["change_summary"]["total_events"] > 0:
                         has_change = True
@@ -356,7 +401,7 @@ class Pipeline:
                         self._route_end_mosaic[0], self._route_end_mosaic[1]
                     )
                 else:
-                    cost_grid = self._mosaic_grid.get_cost_grid()
+                    cost_grid = self._mosaic_grid.get_effective_cost_grid() if config.UNCERTAINTY_ENABLED else self._mosaic_grid.get_cost_grid()
                     hazard_grid = self._mosaic_grid.get_hazard_grid()
                     start = self._mosaic_grid.mosaic_px_to_grid(
                         self._route_start_mosaic[0], self._route_start_mosaic[1]
@@ -378,6 +423,16 @@ class Pipeline:
                     "shadow_exposure_pct": fastest.get("max_shadow_exposure_pct", 0.0),
                     "status":             fastest.get("status", "unknown"),
                 })
+                # Log PPO route if present
+                ppo_route = routes.get("ppo")
+                if ppo_route:
+                    logger.info(
+                        f"Pipeline [{basename}] PPO route: "
+                        f"status={ppo_route.get('status')} "
+                        f"length={ppo_route.get('path_length_cells')} "
+                        f"cost={ppo_route.get('total_cost')} "
+                        f"slip_risk={ppo_route.get('cumulative_slip_risk')}"
+                    )
                 logger.info(
                     f"Pipeline [{basename}] routes: "
                     f"fastest={fastest.get('status')} "
@@ -538,6 +593,66 @@ class Pipeline:
                 overlay = cv2.resize(grid_img, (cw, ch), interpolation=cv2.INTER_NEAREST)
                 return overlay
             return grid_img
+
+    def get_effective_cost_grid(self):
+        """Return the uncertainty/slope-adjusted effective cost grid."""
+        with self._lock:
+            return self._mosaic_grid.get_effective_cost_grid()
+
+    def get_slope_grid(self):
+        """Return the slope grid (degrees)."""
+        with self._lock:
+            return self._mosaic_grid.get_slope_grid()
+
+    def get_yolo_detections_mosaic(self) -> list:
+        """
+        Project YOLO detections from image pixel space to mosaic pixel space
+        using each entry's homography matrix.
+        """
+        import cv2
+        with self._lock:
+            detections = []
+            entries = self._stitcher.get_entries()
+            entry_map = {e.filename: e for e in entries}
+
+            for filename, dets in self._yolo_detections.items():
+                entry = entry_map.get(filename)
+                if entry is None or entry.homography is None:
+                    continue
+
+                H = entry.homography
+                for det in dets:
+                    bbox = det.get("bbox") or det.get("box")
+                    if not bbox:
+                        continue
+
+                    # bbox is [x1, y1, x2, y2] in image space
+                    x1, y1, x2, y2 = bbox[:4]
+                    corners = np.array([
+                        [[x1, y1]], [[x2, y1]], [[x2, y2]], [[x1, y2]]
+                    ], dtype=np.float64)
+
+                    try:
+                        mosaic_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
+                        mx1 = float(mosaic_corners[:, 0].min())
+                        my1 = float(mosaic_corners[:, 1].min())
+                        mx2 = float(mosaic_corners[:, 0].max())
+                        my2 = float(mosaic_corners[:, 1].max())
+                        mcx = (mx1 + mx2) / 2
+                        mcy = (my1 + my2) / 2
+                    except Exception:
+                        continue
+
+                    detections.append({
+                        "class": det.get("class", "unknown"),
+                        "confidence": det.get("confidence", 0.0),
+                        "bbox_mosaic": [round(mx1, 1), round(my1, 1), round(mx2, 1), round(my2, 1)],
+                        "center_mosaic": [round(mcx, 1), round(mcy, 1)],
+                        "source_image": filename,
+                        "original_class": det.get("original_class", det.get("class", "")),
+                    })
+
+            return detections
 
     def get_mosaic_info(self) -> dict:
         """Return mosaic metadata for the dashboard."""

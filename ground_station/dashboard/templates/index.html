@@ -14,7 +14,7 @@ html, body { height: 100%; }
 body {
   background: #0a0e17; color: #e0e0e0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 13px; line-height: 1.4; overflow-x: hidden;
+  font-size: 14px; line-height: 1.4; overflow-x: hidden;
 }
 :root {
   --bg: #0a0e17; --panel: #141a26; --border: #3a3f4b;
@@ -37,7 +37,7 @@ body {
   color: var(--cyan); letter-spacing: 0.08em; white-space: nowrap;
 }
 #topbar .brand small {
-  font-size: 9px; color: var(--dim); font-weight: 400; letter-spacing: 0.04em; margin-left: 8px;
+  font-size: 10px; color: var(--dim); font-weight: 400; letter-spacing: 0.04em; margin-left: 8px;
 }
 .tb-center { display: flex; align-items: center; gap: 16px; margin-left: auto; }
 #mc-state-value {
@@ -45,36 +45,36 @@ body {
   letter-spacing: 0.06em; color: var(--dim); transition: color 0.3s;
 }
 #mc-pass-value { font-family: var(--mono); font-size: 14px; color: var(--bright); }
-.tb-label { font-family: var(--mono); font-size: 8px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.tb-label { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .tb-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .tb-div { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 
 /* ══ TAB BAR ══ */
 #tabbar {
   position: fixed; top: 48px; left: 0; right: 0; z-index: 999;
-  height: 36px; background: #0d1220; border-bottom: 1px solid var(--border);
+  height: 44px; background: #0d1220; border-bottom: 1px solid var(--border);
   display: flex; align-items: stretch; padding: 0 16px; gap: 0;
 }
 .tab-btn {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--dim); background: transparent;
   border: none; border-bottom: 2px solid transparent;
-  padding: 0 20px; cursor: pointer; transition: all 0.2s;
+  padding: 0 24px; cursor: pointer; transition: all 0.2s;
 }
 .tab-btn:hover { color: var(--txt); background: rgba(0,212,255,0.04); border: none; border-bottom: 2px solid transparent; box-shadow: none; }
 .tab-btn.active { color: var(--cyan); border-bottom: 2px solid var(--cyan); background: rgba(0,212,255,0.06); }
 
 /* ══ CONTENT ══ */
-#content { margin-top: 84px; padding: 16px; min-height: calc(100vh - 84px); }
+#content { margin-top: 92px; padding: 20px; min-height: calc(100vh - 92px); }
 .tab-page { display: none; }
 .tab-page.active { display: block; }
 
 /* ── Buttons (global) ── */
 button, .btn {
-  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
   text-transform: uppercase; cursor: pointer;
   background: var(--panel); border: 1px solid var(--border); color: var(--txt);
-  padding: 6px 12px; transition: all 0.15s; white-space: nowrap;
+  padding: 8px 16px; transition: all 0.15s; white-space: nowrap;
 }
 button:hover, .btn:hover { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3); }
 button:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none !important; border-color: var(--border) !important; }
@@ -86,7 +86,7 @@ button.active-end   { border-color: var(--red);   color: var(--red);   backgroun
 .btn-warn   { border-color: var(--amber) !important; color: var(--amber) !important; }
 .btn-cyan   { border-color: var(--cyan) !important; color: var(--cyan) !important; }
 .btn-recalc {
-  width: 100%; padding: 8px; font-family: var(--mono); font-size: 11px;
+  width: 100%; padding: 8px; font-family: var(--mono); font-size: 13px;
   text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;
   background: var(--cyan); color: var(--bg); border: none; font-weight: 700;
 }
@@ -95,49 +95,49 @@ button.active-end   { border-color: var(--red);   color: var(--red);   backgroun
 
 /* ── Inputs ── */
 input[type=number], input[type=text] {
-  font-family: var(--mono); font-size: 11px; color: var(--bright);
+  font-family: var(--mono); font-size: 13px; color: var(--bright);
   background: var(--bg); border: 1px solid var(--border); padding: 4px 6px; width: 40px;
 }
 input.active-input { border-color: var(--cyan); }
 
 /* ── Status dots ── */
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 0; vertical-align: middle; }
 .dot-green { background: var(--green); }
 .dot-amber { background: var(--amber); }
 .dot-red   { background: var(--red); }
 .dot-cyan  { background: var(--cyan); box-shadow: 0 0 4px var(--cyan); }
 .dot-gray  { background: #666; }
-#conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #666; margin-right: 4px; }
+#conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 0; background: #666; margin-right: 4px; }
 #conn-dot.live { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
 
 /* ── MC bar ── */
 #mc-feedback {
-  font-family: var(--mono); font-size: 10px; max-width: 180px;
+  font-family: var(--mono); font-size: 12px; max-width: 220px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #mc-feedback.ok   { color: var(--green); }
 #mc-feedback.fail { color: var(--red); }
 .mc-num-input { width: 32px !important; text-align: center; }
-#mc-connect-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+#mc-connect-dot { width: 8px; height: 8px; border-radius: 0; background: var(--dim); }
 #mc-connect-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
 /* ── Panels ── */
 .pnl { background: var(--panel); border: 1px solid var(--border); margin-bottom: 12px; }
 .pnl-hdr {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
 }
 .pnl-title {
-  font-family: var(--mono); font-size: 10px; color: var(--dim);
-  text-transform: uppercase; letter-spacing: 0.1em; font-weight: 400;
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
 }
 .pnl-badge {
-  margin-left: auto; font-family: var(--mono); font-size: 9px;
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
   padding: 2px 8px; border: 1px solid var(--border); color: var(--dim);
 }
 .pnl-badge.core { border-color: var(--amber); color: var(--amber); }
 .pnl-badge.green { border-color: var(--green); color: var(--green); }
-.pnl-body { padding: 12px; }
+.pnl-body { padding: 14px; }
 
 /* ── Grid layouts ── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -145,10 +145,10 @@ input.active-input { border-color: var(--cyan); }
 .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
 
 /* ── KV rows ── */
-.kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1a2030; }
+.kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1a2030; }
 .kv:last-child { border-bottom: none; }
-.kv .k { color: var(--dim); font-family: var(--mono); font-size: 11px; }
-.kv .v { color: var(--bright); font-family: var(--mono); font-size: 11px; text-align: right; }
+.kv .k { color: var(--dim); font-family: var(--mono); font-size: 13px; }
+.kv .v { color: var(--bright); font-family: var(--mono); font-size: 13px; text-align: right; }
 .kv .v.warn  { color: var(--amber); }
 .kv .v.alert { color: var(--red); }
 
@@ -158,10 +158,10 @@ input.active-input { border-color: var(--cyan); }
 
 /* ── Stat cards (Overview) ── */
 .stat-card {
-  background: #0d1220; border: 1px solid var(--border); padding: 12px; text-align: center;
+  background: #0d1220; border: 1px solid var(--border); padding: 16px 12px; text-align: center;
 }
-.stat-num { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--bright); }
-.stat-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-top: 4px; }
+.stat-num { font-family: var(--mono); font-size: 36px; font-weight: 700; color: var(--bright); }
+.stat-label { font-family: var(--mono); font-size: 11px; color: var(--dim); text-transform: uppercase; margin-top: 6px; }
 
 /* ══ MOSAIC VIEWER (Leaflet) ══ */
 #mosaic-section { flex: 0 0 auto; }
@@ -183,13 +183,13 @@ input.active-input { border-color: var(--cyan); }
   border: 1px solid var(--border); background: var(--panel);
 }
 .hazard-item {
-  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   border-bottom: 1px solid #1a2030; cursor: pointer;
-  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
   transition: background 0.15s;
 }
 .hazard-item:hover { background: rgba(0,212,255,0.06); }
-.hazard-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.hazard-dot { width: 8px; height: 8px; border-radius: 0; flex-shrink: 0; }
 .hazard-class { color: var(--bright); font-weight: 700; min-width: 60px; }
 .hazard-conf { margin-left: auto; }
 .mosaic-controls {
@@ -199,20 +199,20 @@ input.active-input { border-color: var(--cyan); }
 .mosaic-controls button.active-mode { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.1); }
 .overlay-toggles { display: flex; gap: 8px; margin-left: auto; }
 .overlay-toggles label {
-  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
   display: flex; align-items: center; gap: 3px; cursor: pointer;
 }
 .overlay-toggles input[type=checkbox] { width: 12px; height: 12px; }
 .heatmap-legend {
   display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0;
-  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
 }
 .hl-item { display: flex; align-items: center; gap: 3px; }
 .hl-swatch { display: inline-block; width: 10px; height: 10px; }
 
 /* ── Route endpoints ── */
 .ep-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ep-label { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.ep-label { font-family: var(--mono); font-size: 12px; color: var(--dim); }
 .ep-label.start { color: var(--green); }
 .ep-label.end   { color: var(--red); }
 .ep-input { width: 36px !important; text-align: center; font-size: 11px !important; }
@@ -223,21 +223,21 @@ input.active-input { border-color: var(--cyan); }
 .route-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .route-card {
   flex: 1; min-width: 170px; background: var(--panel); border: 1px solid var(--border);
-  border-left: 3px solid var(--border); padding: 8px 10px;
-  font-family: system-ui, sans-serif; font-size: 11px;
+  border-left: 3px solid var(--border); padding: 10px 14px;
+  font-family: system-ui, sans-serif; font-size: 13px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .route-card.selected-card { border-color: var(--cyan); box-shadow: 0 0 6px rgba(0,212,255,0.2); }
 .route-card .rc-name {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  margin-bottom: 6px; display: flex; align-items: center; gap: 5px; letter-spacing: 0.04em;
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 5px; letter-spacing: 0.04em;
 }
-.route-card .rc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
-.route-card .rc-kv { display: flex; justify-content: space-between; padding: 2px 0; color: var(--dim); }
-.route-card .rc-kv .rv { color: var(--bright); font-family: var(--mono); font-size: 11px; }
+.route-card .rc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; }
+.route-card .rc-kv { display: flex; justify-content: space-between; padding: 3px 0; color: var(--dim); font-size: 13px; }
+.route-card .rc-kv .rv { color: var(--bright); font-family: var(--mono); font-size: 13px; }
 .route-card .rc-actions { display: flex; gap: 4px; margin-top: 6px; }
 .route-card .rc-actions button {
-  flex: 1; padding: 3px 0; font-size: 8px !important;
+  flex: 1; padding: 5px 0; font-size: 10px !important;
   background: transparent; border: 1px solid var(--border); color: var(--dim);
 }
 .route-card .rc-actions button:hover { border-color: var(--cyan); color: var(--cyan); }
@@ -247,28 +247,28 @@ input.active-input { border-color: var(--cyan); }
 .rc-shadow-fill { height: 100%; }
 .route-card.constrained-card { border-left-color: #fff; min-width: 100%; }
 .route-card.constrained-card.no-path { border-left-color: var(--red); }
-.risk-badge { font-size: 9px; padding: 1px 5px; font-family: var(--mono); text-transform: uppercase; }
+.risk-badge { font-size: 11px; padding: 1px 5px; font-family: var(--mono); text-transform: uppercase; }
 .risk-LOW      { background: #003322; color: var(--green); border: 1px solid var(--green); }
 .risk-MODERATE { background: #332200; color: var(--amber); border: 1px solid var(--amber); }
 .risk-HIGH     { background: #330000; color: var(--red);   border: 1px solid var(--red); }
 
 /* ── Constraint sliders ── */
-.cst-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.cst-row label { font-size: 11px; color: var(--dim); min-width: 140px; }
+.cst-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cst-row label { font-size: 13px; color: var(--dim); min-width: 160px; }
 .cst-row input[type=range] {
-  -webkit-appearance: none; appearance: none; flex: 1; height: 4px;
+  -webkit-appearance: none; appearance: none; flex: 1; height: 6px;
   background: var(--border); outline: none;
 }
 .cst-row input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 0;
   background: var(--cyan); border: 2px solid var(--bg); cursor: pointer;
   box-shadow: 0 0 4px rgba(0,212,255,0.4);
 }
 .cst-row input[type=range]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%;
+  width: 18px; height: 18px; border-radius: 0;
   background: var(--cyan); border: 2px solid var(--bg); cursor: pointer;
 }
-.cst-row .cv { font-family: var(--mono); font-size: 11px; color: var(--cyan); min-width: 28px; text-align: right; }
+.cst-row .cv { font-family: var(--mono); font-size: 13px; color: var(--cyan); min-width: 28px; text-align: right; }
 
 /* ══ CHANGE DETECTION SLIDER ══ */
 .cs-wrap { position: relative; overflow: hidden; width: 100%; background: var(--bg); }
@@ -284,7 +284,7 @@ input.active-input { border-color: var(--cyan); }
   z-index: 4; left: 50%; transform: translateX(-50%); pointer-events: none;
 }
 .cs-wrap .cs-handle {
-  position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; border-radius: 50%;
+  position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; border-radius: 0;
   background: var(--cyan); border: 2px solid var(--bg); transform: translate(-50%,-50%);
   z-index: 5; cursor: ew-resize; box-shadow: 0 0 8px rgba(0,212,255,0.5);
   display: flex; align-items: center; justify-content: center;
@@ -303,22 +303,22 @@ input.active-input { border-color: var(--cyan); }
 }
 .change-cell-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
 .change-cell-tab {
-  font-family: var(--mono); font-size: 9px; padding: 2px 8px; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; padding: 4px 12px; cursor: pointer;
   background: transparent; border: 1px solid var(--border); color: var(--dim);
 }
 .change-cell-tab:hover { border-color: var(--red); color: var(--red); }
 .change-cell-tab.active { border-color: var(--red); color: var(--red); background: rgba(255,68,68,0.08); }
 .change-event-card {
   background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red);
-  padding: 6px 10px; font-family: var(--mono); font-size: 11px; color: var(--bright);
-  display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 4px;
+  padding: 8px 12px; font-family: var(--mono); font-size: 13px; color: var(--bright);
+  display: flex; align-items: center; gap: 12px; cursor: pointer; margin-top: 4px;
 }
 .change-event-card:hover { border-color: var(--red); }
 .change-event-card.active-event { background: #1a1020; }
 .change-event-card .ce-id { color: var(--red); font-weight: 700; min-width: 20px; }
 .change-event-card .ce-detail { color: var(--dim); }
 .change-event-card .ce-conf { margin-left: auto; }
-.change-warning { background: #332200; border: 1px solid var(--amber); padding: 6px 10px; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--amber); }
+.change-warning { background: #332200; border: 1px solid var(--amber); padding: 6px 10px; margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--amber); }
 
 /* ══ COVERAGE GRID ══ */
 #coverage-canvas { display: block; width: 100%; background: var(--bg); }
@@ -343,7 +343,7 @@ input.active-input { border-color: var(--cyan); }
   background: var(--panel); border: 1px solid var(--border);
 }
 .shadow-summary b { color: var(--bright); }
-.quad-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+.quad-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
 .quad-table th {
   text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim);
   font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em;
@@ -352,10 +352,10 @@ input.active-input { border-color: var(--cyan); }
 .quad-table tr:nth-child(even) td { background: #0f1520; }
 
 /* ── Telemetry ── */
-.telem-group-title { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 4px; }
+.telem-group-title { font-family: var(--mono); font-size: 11px; color: var(--dim); text-transform: uppercase; margin-bottom: 4px; }
 
 /* ── Quality table ── */
-.q-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+.q-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
 .q-table th { text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim); font-weight: 400; text-transform: uppercase; }
 .q-table td { padding: 3px 6px; border-bottom: 1px solid #1a2030; }
 .q-table tr:nth-child(even) td { background: #0f1520; }
@@ -363,20 +363,20 @@ input.active-input { border-color: var(--cyan); }
 .pass-fail { color: var(--red); }
 
 /* ── Event log ── */
-#event-log { max-height: 400px; overflow-y: auto; padding: 6px 8px; font-family: var(--mono); font-size: 10px; line-height: 1.6; }
+#event-log { max-height: 400px; overflow-y: auto; padding: 6px 8px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
 #event-log .line-err  { color: var(--red); }
 #event-log .line-warn { color: var(--amber); }
 #event-log .line-info { color: var(--dim); }
 
 /* ── Command panel ── */
 .cmd-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-.cmd-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; min-width: 80px; }
-.cmd-input { width: 120px !important; font-size: 10px !important; }
+.cmd-label { font-family: var(--mono); font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; min-width: 80px; }
+.cmd-input { width: 120px !important; font-size: 12px !important; }
 
 /* ── Route warning ── */
 #route-change-warning {
   display: none; background: #332200; border: 1px solid var(--amber);
-  padding: 6px 10px; margin-bottom: 6px; font-family: var(--mono); font-size: 10px; color: var(--amber);
+  padding: 6px 10px; margin-bottom: 6px; font-family: var(--mono); font-size: 12px; color: var(--amber);
 }
 
 /* ── LLM bar ── */
@@ -397,7 +397,7 @@ input.active-input { border-color: var(--cyan); }
 .dl-live-wrap.dl-complete { border-color: var(--green); }
 
 .dl-status-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; width: 8px; height: 8px; border-radius: 0;
   margin-right: 6px; vertical-align: middle;
 }
 .dl-status-dot.idle { background: var(--dim); }
@@ -436,17 +436,17 @@ input.active-input { border-color: var(--cyan); }
 
 .dl-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-  font-family: var(--mono); font-size: 10px;
+  font-family: var(--mono); font-size: 12px;
 }
-.dl-stat-label { color: var(--dim); font-size: 8px; text-transform: uppercase; }
-.dl-stat-value { color: var(--bright); font-size: 12px; font-weight: 700; }
+.dl-stat-label { color: var(--dim); font-size: 10px; text-transform: uppercase; }
+.dl-stat-value { color: var(--bright); font-size: 14px; font-weight: 700; }
 
 .dl-filename {
   font-family: var(--mono); font-size: 11px; color: var(--bright);
   display: inline; margin-left: 4px;
 }
 .dl-status-text {
-  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
   text-transform: uppercase; letter-spacing: 0.08em;
   display: inline; margin-left: 8px;
 }
@@ -458,7 +458,7 @@ input.active-input { border-color: var(--cyan); }
 .dl-history { margin-top: 6px; }
 .dl-history-item {
   display: flex; align-items: center; gap: 8px; padding: 2px 0;
-  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
   border-bottom: 1px solid #1a2030;
 }
 .dl-history-item .dl-h-name { color: var(--bright); min-width: 120px; }
@@ -466,8 +466,26 @@ input.active-input { border-color: var(--cyan); }
 .dl-history-item .dl-h-fail { color: var(--red); }
 
 /* ── Misc ── */
-.note { font-family: var(--mono); font-size: 9px; color: var(--dim); }
+.note { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .hidden { display: none !important; }
+
+/* ── Top bar dropdown ── */
+.tb-dropdown {
+  position: absolute; top: 48px; right: 16px;
+  background: var(--panel); border: 1px solid var(--border);
+  padding: 12px; min-width: 280px; z-index: 1001;
+  display: none;
+}
+.tb-dropdown.open { display: block; }
+.tb-dropdown-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; border-bottom: 1px solid #1a2030;
+}
+.tb-dropdown-row:last-child { border-bottom: none; }
+.tb-dropdown-label {
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.08em; min-width: 60px;
+}
 </style>
 </head>
 <body>
@@ -475,7 +493,7 @@ input.active-input { border-color: var(--cyan); }
 <!-- ══ TOP BAR ══ -->
 <div id="topbar">
   <div class="brand">MURALTZ GCS <small>ARTEMIS LUNAR NAVIGATOR &middot; MIT BWSI 2025-2026</small></div>
-  <span id="conn-dot"></span><span id="conn-label" style="font-family:var(--mono);font-size:9px;color:var(--dim);">OFFLINE</span>
+  <span id="conn-dot"></span><span id="conn-label" style="font-family:var(--mono);font-size:11px;color:var(--dim);">OFFLINE</span>
 
   <div class="tb-center">
     <div style="text-align:center;">
@@ -493,20 +511,29 @@ input.active-input { border-color: var(--cyan); }
     <button id="mc-btn-start" disabled onclick="mcStartPass(this)">&#9654; START PASS</button>
     <button id="mc-btn-end" disabled onclick="mcEndPass(this)">&#9632; END PASS</button>
     <div class="tb-div"></div>
-    <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">CELL</span>
-    <input id="mc-row" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
-    <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
-    <button id="mc-btn-cell" disabled onclick="mcSetCell(this)">SET</button>
-    <div class="tb-div"></div>
     <button id="mc-btn-discover" class="active-start" onclick="mcDiscover()">FIND</button>
-    <button id="mc-btn-pi-start" onclick="mcPiStart()" style="display:none;">START SW</button>
-    <button id="mc-btn-pi-stop" onclick="mcPiStop()" style="display:none;">STOP SW</button>
-    <span id="mc-pi-ip" style="font-family:var(--mono);font-size:10px;color:var(--dim);"></span>
     <div id="mc-connect-dot"></div>
     <div id="mc-feedback"></div>
     <div class="tb-div"></div>
-    <button class="btn-danger" onclick="mcNewSession()">NEW SESSION</button>
-    <button class="btn-cyan" onclick="mcExport()">EXPORT</button>
+    <button id="tb-more-btn" onclick="toggleTopbarDropdown()">MORE &#9662;</button>
+  </div>
+  <div class="tb-dropdown" id="tb-dropdown">
+    <div class="tb-dropdown-row">
+      <span class="tb-dropdown-label">Cell</span>
+      <input id="mc-row" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
+      <input id="mc-col" class="mc-num-input" type="number" min="0" max="7" value="0" disabled style="width:28px;">
+      <button id="mc-btn-cell" disabled onclick="mcSetCell(this)">SET</button>
+    </div>
+    <div class="tb-dropdown-row">
+      <span class="tb-dropdown-label">Pi</span>
+      <button id="mc-btn-pi-start" onclick="mcPiStart()" style="display:none;">START SW</button>
+      <button id="mc-btn-pi-stop" onclick="mcPiStop()" style="display:none;">STOP SW</button>
+      <span id="mc-pi-ip" style="font-family:var(--mono);font-size:12px;color:var(--dim);"></span>
+    </div>
+    <div class="tb-dropdown-row">
+      <button class="btn-danger" onclick="mcNewSession()">NEW SESSION</button>
+      <button class="btn-cyan" onclick="mcExport()">EXPORT</button>
+    </div>
   </div>
 </div>
 
@@ -547,7 +574,7 @@ input.active-input { border-color: var(--cyan); }
           <div class="kv"><span class="k">Coverage</span><span class="v" id="s-coverage">--</span></div>
           <div class="kv"><span class="k">Route</span><span class="v" id="s-route">--</span></div>
           <div class="kv"><span class="k">Changes</span><span class="v" id="s-changes">--</span></div>
-          <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:9px;">--</span></div>
+          <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:11px;">--</span></div>
         </div>
       </div>
       <!-- Downlink (Live SSE) -->
@@ -569,10 +596,10 @@ input.active-input { border-color: var(--cyan); }
               <div class="dl-progress-fill" id="dl-bar" style="width:0%;"></div>
             </div>
             <div class="dl-stats">
-              <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">B/s</div></div>
-              <div><div style="color:var(--dim);">ETA</div><div id="dl-eta" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">sec</div></div>
-              <div><div style="color:var(--dim);">Elapsed</div><div id="dl-elapsed" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:8px;">sec</div></div>
-              <div><div style="color:var(--dim);">Progress</div><div id="dl-pct" style="color:var(--bright);">0%</div><div style="color:var(--dim);font-size:8px;">&nbsp;</div></div>
+              <div><div style="color:var(--dim);">Rate</div><div id="dl-rate" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:10px;">B/s</div></div>
+              <div><div style="color:var(--dim);">ETA</div><div id="dl-eta" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:10px;">sec</div></div>
+              <div><div style="color:var(--dim);">Elapsed</div><div id="dl-elapsed" style="color:var(--bright);">--</div><div style="color:var(--dim);font-size:10px;">sec</div></div>
+              <div><div style="color:var(--dim);">Progress</div><div id="dl-pct" style="color:var(--bright);">0%</div><div style="color:var(--dim);font-size:10px;">&nbsp;</div></div>
             </div>
           </div>
           <!-- Idle message (shown when no transfer active) -->
@@ -607,9 +634,9 @@ input.active-input { border-color: var(--cyan); }
               <div id="cov-tl-p2" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 2</span></div>
               <div id="cov-tl-p3" class="cov-tl-seg" style="flex:1;background:#003322;"><span>Pass 3</span></div>
             </div>
-            <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
+            <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:0;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
           </div>
-          <button style="width:100%;margin-top:4px;font-size:9px;" onclick="startCoverageAnim()">REPLAY</button>
+          <button style="width:100%;margin-top:4px;font-size:11px;" onclick="startCoverageAnim()">REPLAY</button>
           <div class="note" style="margin-top:3px;">
             <span class="dot dot-green"></span> Surveyed &nbsp;
             <span class="dot dot-amber"></span> Change &nbsp;
@@ -785,19 +812,19 @@ input.active-input { border-color: var(--cyan); }
         <div class="pnl-hdr"><span class="pnl-title">Commands</span></div>
         <div class="pnl-body">
           <div style="display:flex;flex-direction:column;gap:6px;">
-            <button onclick="sendCmd({cmd:'enter_safe_mode'},this)" style="width:100%;padding:10px;border-color:var(--red);color:var(--red);">SAFE MODE</button>
-            <button onclick="sendCmd({cmd:'resume_normal'},this)" style="width:100%;padding:10px;">RESUME NORMAL</button>
-            <button onclick="sendCmd({cmd:'status_request'},this)" style="width:100%;padding:10px;">STATUS REQUEST</button>
-            <button onclick="sendCmd({cmd:'retry_downlink'},this)" style="width:100%;padding:10px;">RETRY DOWNLINK</button>
+            <button onclick="sendCmd({cmd:'enter_safe_mode'},this)" style="width:100%;padding:12px;font-size:13px;border-color:var(--red);color:var(--red);">SAFE MODE</button>
+            <button onclick="sendCmd({cmd:'resume_normal'},this)" style="width:100%;padding:12px;font-size:13px;">RESUME NORMAL</button>
+            <button onclick="sendCmd({cmd:'status_request'},this)" style="width:100%;padding:12px;font-size:13px;">STATUS REQUEST</button>
+            <button onclick="sendCmd({cmd:'retry_downlink'},this)" style="width:100%;padding:12px;font-size:13px;">RETRY DOWNLINK</button>
           </div>
         </div>
       </div>
       <div class="pnl">
         <div class="pnl-hdr"><span class="pnl-title">Advanced Commands</span></div>
         <div class="pnl-body">
-          <div class="cmd-row"><span class="cmd-label">Retransmit</span><input id="in-retransmit" class="cmd-input" type="text" placeholder="image_id"><button onclick="cmdRetransmit(this)" style="font-size:9px;">SEND</button></div>
-          <div class="cmd-row"><span class="cmd-label">Priority Cell</span><input id="in-pri-r" type="number" min="0" max="7" value="0" style="width:28px;"><input id="in-pri-c" type="number" min="0" max="7" value="0" style="width:28px;"><button onclick="cmdPriorityCell(this)" style="font-size:9px;">SET</button></div>
-          <div class="cmd-row"><span class="cmd-label">Exposure</span><input id="in-exposure" class="cmd-input" type="text" placeholder="e.g. 20000"><button onclick="cmdExposure(this)" style="font-size:9px;">SET</button></div>
+          <div class="cmd-row"><span class="cmd-label">Retransmit</span><input id="in-retransmit" class="cmd-input" type="text" placeholder="image_id"><button onclick="cmdRetransmit(this)" style="font-size:11px;">SEND</button></div>
+          <div class="cmd-row"><span class="cmd-label">Priority Cell</span><input id="in-pri-r" type="number" min="0" max="7" value="0" style="width:28px;"><input id="in-pri-c" type="number" min="0" max="7" value="0" style="width:28px;"><button onclick="cmdPriorityCell(this)" style="font-size:11px;">SET</button></div>
+          <div class="cmd-row"><span class="cmd-label">Exposure</span><input id="in-exposure" class="cmd-input" type="text" placeholder="e.g. 20000"><button onclick="cmdExposure(this)" style="font-size:11px;">SET</button></div>
         </div>
       </div>
     </div>
@@ -832,7 +859,7 @@ input.active-input { border-color: var(--cyan); }
   </div>
 
   <div id="llm-bar">
-    <span style="font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
+    <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
     <input id="llm-input" type="text" placeholder="Ask about mission state (requires local ollama)" onkeydown="if(event.key==='Enter')sendLLM()">
     <button onclick="sendLLM()">ASK</button>
   </div>
@@ -862,6 +889,17 @@ function switchTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
 }
+
+// ─── Topbar dropdown toggle ───────────────────────────────────────────────────
+function toggleTopbarDropdown() {
+  el('tb-dropdown').classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  const dd = el('tb-dropdown');
+  if (dd && !dd.contains(e.target) && e.target.id !== 'tb-more-btn') {
+    dd.classList.remove('open');
+  }
+});
 
 // ─── Collapse toggle (kept for compatibility) ────────────────────────────────
 function toggleCollapse(hdr) {
@@ -1722,7 +1760,7 @@ function _updateHazardMarkers(detections) {
 
   if (sidebar) {
     sidebar.innerHTML = detections.length
-      ? `<div style="padding:4px 8px;font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--border);">${detections.length} Detection(s)</div>` + sidebarHtml
+      ? `<div style="padding:4px 8px;font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--border);">${detections.length} Detection(s)</div>` + sidebarHtml
       : '';
   }
 }
@@ -2321,6 +2359,7 @@ let _covAnimRunning = false;
 let _covAnimFrame = null;
 const COV_ANIM_DUR = 3500;    // 3.5s total (1s per pass + 0.5s for change pulse)
 const COV_ROWS = 8, COV_COLS = 8;
+const COL_LABELS = ['A','B','C','D','E','F','G','H'];
 const COV_MARGIN_LEFT = 20, COV_MARGIN_TOP = 16;
 
 async function pollCoverage() {

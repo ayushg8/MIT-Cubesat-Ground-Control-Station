@@ -656,6 +656,88 @@ def api_mission_summary():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# API — AI Advisor
+# ─────────────────────────────────────────────────────────────────────────────
+
+_orchestrator = None
+
+
+def _get_orchestrator():
+    global _orchestrator
+    if _orchestrator is None:
+        from agents.orchestrator import MissionOrchestrator
+        _orchestrator = MissionOrchestrator()
+    return _orchestrator
+
+
+@app.route("/api/advisor/run", methods=["POST"])
+def api_advisor_run():
+    """Run the full AI advisor pipeline: analyze → specialists → briefing."""
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+
+    try:
+        telemetry = {}
+        try:
+            telemetry = telemetry_parser.get_latest_telemetry()
+        except Exception:
+            pass
+
+        orchestrator = _get_orchestrator()
+        result = orchestrator.run_full_analysis(
+            _pipeline, _mission_state, telemetry
+        )
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"advisor/run failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/advisor/decisions")
+def api_advisor_decisions():
+    """Return the current decision log from mission_state."""
+    if _mission_state is None:
+        return jsonify({"decisions": []})
+    return jsonify({"decisions": _mission_state.get_decision_log()})
+
+
+@app.route("/api/advisor/approve", methods=["POST"])
+def api_advisor_approve():
+    """Resolve a pending decision. Body: {id, action: approve|override|defer, note?}."""
+    if _mission_state is None:
+        return jsonify({"success": False, "error": "Mission state not ready"}), 503
+
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid JSON"}), 400
+
+    decision_id = body.get("id", "")
+    action = body.get("action", "")
+    note = body.get("note", "")
+
+    if action not in ("APPROVED", "OVERRIDDEN", "DEFERRED"):
+        return jsonify({"success": False, "error": "action must be APPROVED, OVERRIDDEN, or DEFERRED"}), 400
+
+    success = _mission_state.resolve_decision(decision_id, action, note)
+    if success:
+        _mission_state.save()
+    return jsonify({"success": success, "id": decision_id, "action": action})
+
+
+@app.route("/api/advisor/status")
+def api_advisor_status():
+    """Lightweight poll: return latest briefing + pending decision count."""
+    orchestrator = _get_orchestrator()
+    briefing = orchestrator.get_last_briefing()
+    pending = _mission_state.get_pending_decisions() if _mission_state else []
+    return jsonify({
+        "briefing": briefing,
+        "pending_count": len(pending),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # API — commands
 # ─────────────────────────────────────────────────────────────────────────────
 

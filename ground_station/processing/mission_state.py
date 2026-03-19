@@ -193,6 +193,40 @@ class MissionState:
                 ul["commands_acked"] += 1
 
     # ─────────────────────────────────────────────────────────────────────────
+    # AI Advisor decision log
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def record_advisor_decision(self, decision: dict):
+        """Append an AI advisor decision to the decision log."""
+        with self._lock:
+            self._state["decision_log"].append(decision)
+
+    def resolve_decision(self, decision_id: str, action: str, note: str = ""):
+        """Resolve a pending decision: approve, override, or defer."""
+        with self._lock:
+            for entry in self._state["decision_log"]:
+                if entry.get("id") == decision_id:
+                    entry["status"] = action.upper()
+                    entry["operator_action"] = action
+                    entry["operator_note"] = note
+                    entry["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                    return True
+        return False
+
+    def get_decision_log(self) -> list:
+        """Return a copy of the decision log."""
+        with self._lock:
+            return list(self._state["decision_log"])
+
+    def get_pending_decisions(self) -> list:
+        """Return only PENDING_HUMAN_APPROVAL decisions."""
+        with self._lock:
+            return [
+                d for d in self._state["decision_log"]
+                if d.get("status") == "PENDING_HUMAN_APPROVAL"
+            ]
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -324,6 +358,7 @@ class MissionState:
                 "cv_agreement_rate": 1.0,
                 "detections_per_cell": {},
             },
+            "decision_log": [],
             # Internal — not written to JSON
             "_cubesat_scores": [],
             "_cells_covered": set(),

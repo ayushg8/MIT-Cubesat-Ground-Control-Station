@@ -1,0 +1,6 @@
+{
+  "grid_size": 32,
+  "view_size": 11,
+  "max_steps": 250,
+  "total_timesteps": 500000
+}

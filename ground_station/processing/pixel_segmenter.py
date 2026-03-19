@@ -104,6 +104,16 @@ class PixelSegmenter:
                 if x2 <= x1 or y2 <= y1:
                     continue
 
+                # Suppress shadow within YOLO segmentation contour
+                # (dark pixels on the object itself aren't navigation shadows)
+                contour = det.get("contour")
+                if contour and len(contour) >= 3:
+                    contour_pts = np.array(contour, dtype=np.int32)
+                    contour_mask = np.zeros((h, w), dtype=np.uint8)
+                    cv2.fillPoly(contour_mask, [contour_pts], 255)
+                    shadow_in_contour = (label_map == SHADOW) & (contour_mask > 0)
+                    label_map[shadow_in_contour] = SAND
+
                 if cls in ("plain", "plain_surface"):
                     # Mark as PLAIN_SURFACE where not already a hazard
                     roi = label_map[y1:y2, x1:x2]
@@ -111,9 +121,14 @@ class PixelSegmenter:
                     roi[safe_mask] = PLAIN_SURFACE
                 elif cls in ("crater", "boulder", "obstacle"):
                     label = CRATER if cls == "crater" else BOULDER
-                    self._segment_object_in_bbox(
-                        gray, label_map, x1, y1, x2, y2, label
-                    )
+                    if contour and len(contour) >= 3:
+                        # Use precise segmentation contour instead of bbox thresholding
+                        contour_pts = np.array(contour, dtype=np.int32)
+                        cv2.fillPoly(label_map, [contour_pts], int(label))
+                    else:
+                        self._segment_object_in_bbox(
+                            gray, label_map, x1, y1, x2, y2, label
+                        )
 
         # Dilate all hazard labels by safety margin
         if config.SEG_SAFETY_DILATION_PX > 0:

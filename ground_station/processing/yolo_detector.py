@@ -113,7 +113,7 @@ class YOLODetector:
         self._load_model()
         return self._is_lunar
 
-    def detect(self, image_path: str, confidence_threshold: float = 0.3) -> list[dict]:
+    def detect(self, image_path: str, confidence_threshold: float = 0.2) -> list[dict]:
         """
         Run YOLO detection on an image.
 
@@ -149,7 +149,12 @@ class YOLODetector:
         img_area = img_h * img_w
 
         for result in results:
-            for box in result.boxes:
+            # Extract mask polygons if available (segmentation model)
+            masks_xy = None
+            if result.masks is not None and result.masks.xy is not None:
+                masks_xy = result.masks.xy
+
+            for idx, box in enumerate(result.boxes):
                 cls_id = int(box.cls[0])
                 cls_name = result.names[cls_id]
                 conf = float(box.conf[0])
@@ -169,6 +174,16 @@ class YOLODetector:
                     )
                     continue
 
+                # Extract and simplify contour from segmentation mask
+                contour = None
+                if masks_xy is not None and idx < len(masks_xy):
+                    raw_poly = masks_xy[idx]
+                    if len(raw_poly) >= 3:
+                        pts = np.array(raw_poly, dtype=np.float32).reshape(-1, 1, 2)
+                        epsilon = 0.005 * cv2.arcLength(pts, closed=True)
+                        approx = cv2.approxPolyDP(pts, epsilon, closed=True)
+                        contour = approx.reshape(-1, 2).astype(int).tolist()
+
                 detections.append({
                     "class": lunar_class,
                     "confidence": round(conf, 3),
@@ -176,6 +191,7 @@ class YOLODetector:
                     "area_px": int((x2 - x1) * (y2 - y1)),
                     "center": [int((x1 + x2) / 2), int((y1 + y2) / 2)],
                     "original_class": cls_name,
+                    "contour": contour,
                 })
 
         # Sort by confidence descending
@@ -221,7 +237,19 @@ class YOLODetector:
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             color = colors.get(det["class"], (200, 200, 200))
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+
+            # Draw contour polygon if available, otherwise bbox
+            contour = det.get("contour")
+            if contour and len(contour) >= 3:
+                pts = np.array(contour, dtype=np.int32)
+                # Semi-transparent filled polygon via alpha blending
+                overlay = img.copy()
+                cv2.fillPoly(overlay, [pts], color)
+                cv2.addWeighted(overlay, 0.25, img, 0.75, 0, img)
+                cv2.drawContours(img, [pts], -1, color, 2)
+            else:
+                cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+
             label = f"{det['class']} {det['confidence']:.0%}"
             # Background rectangle for text readability
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)

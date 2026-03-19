@@ -344,7 +344,8 @@ def _save_hazard_map(
     colour = _COLOURS[hazard_class]
     banner_h = 28
     banner = np.full((banner_h, img.shape[1], 3), colour, dtype=np.uint8)
-    label = f"Cell ({grid_cell[0]},{grid_cell[1]}) — {hazard_class} ({confidence:.0%})"
+    cell_str = f"Cell ({grid_cell[0]},{grid_cell[1]})" if grid_cell else "Cell (?)"
+    label = f"{cell_str} — {hazard_class} ({confidence:.0%})"
     cv2.putText(banner, label, (6, 19), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     result = np.vstack([banner, overlay])
 

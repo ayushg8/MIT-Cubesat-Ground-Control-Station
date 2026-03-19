@@ -2,6 +2,7 @@
 #
 # Run from ground_station/:
 #   python server.py
+#   python server.py --reprocess   # also re-run pipeline on existing received images
 #
 # Starts:
 #   1. Logging (stdout + file)
@@ -10,6 +11,8 @@
 #   4. TCP listener thread (port 5000) — waits for CubeSat to push data
 #   5. Flask dashboard (port 3000) — serves the mission ops UI
 
+import glob
+import json
 import logging
 import os
 import sys
@@ -118,7 +121,11 @@ def main():
     listener_thread.start()
     logger.info(f"TCP listener started (port {config.LISTEN_PORT})")
 
-    # 7. Banner
+    # 7. Reprocess existing images if requested
+    if "--reprocess" in sys.argv:
+        _reprocess_existing(pipeline)
+
+    # 8. Banner
     print()
     print("=" * 60)
     print("  MuraltZ Ground Station Online")
@@ -129,7 +136,7 @@ def main():
     print("=" * 60)
     print()
 
-    # 8. Flask — blocks here until Ctrl-C
+    # 9. Flask — blocks here until Ctrl-C
     try:
         dash_app.app.run(
             host="0.0.0.0",
@@ -172,6 +179,48 @@ def _push_quality_entry(image_path: str, metadata: dict, ground_quality: dict):
         dash_app.append_quality_entry(entry)
     except Exception:
         pass  # dashboard not critical path
+
+
+def _reprocess_existing(pipeline):
+    """Re-run the pipeline on images already in data/received_images/.
+
+    Feeds each image + its metadata sidecar through the real pipeline
+    (quality check → mosaic → shadow → hazard → change detection etc.)
+    so the dashboard shows results from previous CubeSat captures.
+    """
+    from receiver.quality_check import run_ground_quality_check
+
+    logger = logging.getLogger(__name__)
+
+    pattern = os.path.join(config.RECEIVED_DIR, "*.jpg")
+    all_jpgs = sorted(glob.glob(pattern))
+
+    # Only process images that have metadata sidecars
+    pairs = []
+    for jpg_path in all_jpgs:
+        meta_path = jpg_path.replace(".jpg", "_meta.json")
+        if os.path.exists(meta_path):
+            pairs.append((jpg_path, meta_path))
+
+    if not pairs:
+        logger.info("No existing images with metadata to reprocess")
+        return
+
+    logger.info(f"Reprocessing {len(pairs)} existing images through pipeline...")
+
+    for i, (jpg_path, meta_path) in enumerate(pairs):
+        basename = os.path.basename(jpg_path)
+        try:
+            with open(meta_path) as f:
+                metadata = json.load(f)
+
+            quality = run_ground_quality_check(jpg_path)
+            pipeline.process(jpg_path, metadata, quality)
+            logger.info(f"  [{i+1}/{len(pairs)}] {basename} — OK")
+        except Exception as e:
+            logger.warning(f"  [{i+1}/{len(pairs)}] {basename} — FAILED: {e}")
+
+    logger.info(f"Reprocessing complete: {len(pairs)} images")
 
 
 if __name__ == "__main__":

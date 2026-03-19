@@ -75,6 +75,8 @@ class Pipeline:
         # YOLO detection state (accumulated across images)
         self._yolo_detections: dict = {}   # {"filename": [detection_dicts]}
         self._fused_results: list = []     # [fused_classification_dicts]
+        self._shadow_percentages: dict = {}  # {"filename": float}
+        self._image_metadata: list = []      # accumulated metadata dicts
 
         # Latest hazard map path (used as base for route overlay)
         self._latest_hazard_map_path: str | None = None
@@ -118,8 +120,9 @@ class Pipeline:
 
         logger.info(f"Pipeline: starting for '{basename}'")
 
-        # ── Record in mission state ──
+        # ── Record in mission state + accumulate metadata ──
         self._mission_state.record_image_received(basename, metadata, ground_quality)
+        self._image_metadata.append(metadata)
 
         mosaic_result   = None
         shadow_result   = None
@@ -157,6 +160,7 @@ class Pipeline:
             shadow_result = self._shadow_detector.run(image_path)
             if shadow_result is None:
                 raise RuntimeError("ShadowDetector returned None")
+            self._shadow_percentages[basename] = shadow_result['shadow_percentage']
             logger.info(
                 f"Pipeline [{basename}] shadow: "
                 f"{shadow_result['shadow_percentage']:.1f}%, "
@@ -672,6 +676,19 @@ class Pipeline:
                     })
 
             return detections
+
+    def get_analyzer_context(self) -> dict:
+        """Gather all data MissionAnalyzer needs in one lock-acquire."""
+        with self._lock:
+            return {
+                "observation_count": self._mosaic_grid.get_observation_count(),
+                "surveyed_mask": self._mosaic_grid.get_surveyed_mask(),
+                "fine_hazard_grid": self._mosaic_grid.get_fine_hazard_grid(),
+                "yolo_detections": dict(self._yolo_detections),
+                "fused_results": list(self._fused_results),
+                "shadow_percentages": dict(self._shadow_percentages),
+                "image_metadata": list(self._image_metadata),
+            }
 
     def recommend_landing_sites(self) -> dict:
         """Run the landing recommender on current grid state."""

@@ -666,6 +666,8 @@ input.active-input { border-color: var(--cyan); }
 
 <!-- ═══ TERRAIN TAB ═══ -->
 <div class="tab-page" id="tab-terrain">
+<div style="display:flex;gap:12px;align-items:flex-start;">
+<div id="terrain-main" style="flex:3;min-width:0;">
   <div class="pnl" id="mosaic-section">
     <div class="pnl-hdr">
       <span class="pnl-title">Mosaic Terrain Viewer</span>
@@ -730,7 +732,54 @@ input.active-input { border-color: var(--cyan); }
       </div>
     </div>
   </div>
+</div><!-- /terrain-main -->
+
+<!-- ═══ AI ADVISOR PANEL (right side) ═══ -->
+<div id="advisor-panel" style="flex:2;min-width:280px;max-width:400px;position:sticky;top:92px;max-height:calc(100vh - 104px);overflow-y:auto;">
+  <div class="pnl">
+    <div class="pnl-hdr">
+      <span class="pnl-title">AI Mission Advisor</span>
+      <span class="pnl-badge" id="advisor-status-badge" style="border-color:var(--dim);color:var(--dim);">IDLE</span>
+    </div>
+    <div class="pnl-body" style="padding:10px;">
+      <button id="btn-run-advisor" onclick="runAdvisor()" style="width:100%;background:var(--cyan);color:#0a0e17;border:none;padding:8px 12px;cursor:pointer;font-weight:bold;font-size:12px;font-family:var(--mono);margin-bottom:10px;">RUN AI ADVISOR</button>
+
+      <!-- Commander Briefing -->
+      <div id="advisor-briefing" style="display:none;margin-bottom:12px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px;">Mission Commander's Briefing</div>
+        <div id="advisor-briefing-status" style="font-family:var(--mono);font-size:11px;font-weight:bold;padding:4px 8px;margin-bottom:6px;"></div>
+        <div id="advisor-briefing-text" style="font-family:var(--mono);font-size:11px;color:var(--txt);line-height:1.5;padding:8px;background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);"></div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px;">
+          Specialists: <span id="advisor-specialists"></span> | Flags: <span id="advisor-flag-count">0</span>
+        </div>
+      </div>
+
+      <!-- Pending Decisions -->
+      <div id="advisor-pending-section" style="display:none;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--amber);text-transform:uppercase;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+          Pending Decisions <span id="advisor-pending-count" style="background:var(--amber);color:#0a0e17;padding:1px 6px;font-size:9px;margin-left:4px;">0</span>
+        </div>
+        <div id="advisor-pending-list"></div>
+      </div>
+
+      <!-- Resolved Decisions -->
+      <div id="advisor-resolved-section" style="display:none;margin-top:10px;">
+        <div onclick="document.getElementById('advisor-resolved-list').style.display=document.getElementById('advisor-resolved-list').style.display==='none'?'block':'none'" style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--border);padding-bottom:4px;">
+          Resolved <span id="advisor-resolved-count">0</span>
+        </div>
+        <div id="advisor-resolved-list" style="display:none;"></div>
+      </div>
+
+      <!-- Loading spinner -->
+      <div id="advisor-loading" style="display:none;text-align:center;padding:20px;">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--cyan);">Analyzing mission data...</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px;">Running specialists via Ollama</div>
+      </div>
+    </div>
+  </div>
 </div>
+</div><!-- /flex container -->
+</div><!-- /tab-terrain -->
 
 <!-- ═══ DETECTION TAB ═══ -->
 <div class="tab-page" id="tab-detection">
@@ -1839,6 +1888,151 @@ function loadMissionSummary() {
       console.log('Mission summary:', data);
     })
     .catch(err => console.warn('Mission summary fetch failed:', err));
+}
+
+// ─── AI Advisor ──────────────────────────────────────────────────────────────
+let _advisorDecisions = [];
+
+function runAdvisor() {
+  const btn = el('btn-run-advisor');
+  const loading = el('advisor-loading');
+  const briefingDiv = el('advisor-briefing');
+  const badge = el('advisor-status-badge');
+
+  btn.disabled = true;
+  btn.textContent = 'ANALYZING...';
+  loading.style.display = 'block';
+  briefingDiv.style.display = 'none';
+  badge.textContent = 'RUNNING';
+  badge.style.borderColor = 'var(--cyan)';
+  badge.style.color = 'var(--cyan)';
+
+  fetch('/api/advisor/run', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      loading.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = 'RUN AI ADVISOR';
+
+      if (data.error) {
+        badge.textContent = 'ERROR';
+        badge.style.borderColor = 'var(--red)';
+        badge.style.color = 'var(--red)';
+        return;
+      }
+
+      // Render briefing
+      const b = data.briefing || {};
+      briefingDiv.style.display = 'block';
+
+      const statusEl = el('advisor-briefing-status');
+      const statusMap = { 'GO': ['GO', '--green'], 'CONDITIONAL': ['CONDITIONAL GO', '--amber'], 'NO-GO': ['NO-GO', '--red'] };
+      const [statusText, statusColor] = statusMap[b.status] || ['UNKNOWN', '--dim'];
+      statusEl.textContent = statusText;
+      statusEl.style.color = `var(${statusColor})`;
+      statusEl.style.borderLeft = `3px solid var(${statusColor})`;
+
+      el('advisor-briefing-text').textContent = b.text || 'No briefing generated.';
+      el('advisor-specialists').textContent = (b.specialists_dispatched || []).join(', ') || 'none';
+      el('advisor-flag-count').textContent = b.total_flags || 0;
+
+      badge.textContent = statusText;
+      badge.style.borderColor = `var(${statusColor})`;
+      badge.style.color = `var(${statusColor})`;
+
+      // Render decisions
+      _advisorDecisions = data.decisions || [];
+      _renderAdvisorDecisions();
+    })
+    .catch(err => {
+      loading.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = 'RUN AI ADVISOR';
+      badge.textContent = 'ERROR';
+      badge.style.borderColor = 'var(--red)';
+      badge.style.color = 'var(--red)';
+      console.error('Advisor failed:', err);
+    });
+}
+
+function _renderAdvisorDecisions() {
+  // Fetch full decision log to include resolved ones
+  fetch('/api/advisor/decisions')
+    .then(r => r.json())
+    .then(data => {
+      const all = data.decisions || [];
+      const pending = all.filter(d => d.status === 'PENDING_HUMAN_APPROVAL');
+      const resolved = all.filter(d => d.status !== 'PENDING_HUMAN_APPROVAL');
+
+      // Pending
+      const pendingSec = el('advisor-pending-section');
+      const pendingList = el('advisor-pending-list');
+      el('advisor-pending-count').textContent = pending.length;
+
+      if (pending.length > 0) {
+        pendingSec.style.display = 'block';
+        pendingList.innerHTML = pending.map(d => _decisionCardHtml(d)).join('');
+      } else {
+        pendingSec.style.display = 'none';
+        pendingList.innerHTML = '';
+      }
+
+      // Resolved
+      const resolvedSec = el('advisor-resolved-section');
+      el('advisor-resolved-count').textContent = resolved.length;
+      if (resolved.length > 0) {
+        resolvedSec.style.display = 'block';
+        el('advisor-resolved-list').innerHTML = resolved.map(d => _resolvedCardHtml(d)).join('');
+      } else {
+        resolvedSec.style.display = 'none';
+      }
+    });
+}
+
+function _decisionCardHtml(d) {
+  const sevColor = d.severity === 'CRITICAL' ? 'var(--red)' : d.severity === 'WARNING' ? 'var(--amber)' : 'var(--dim)';
+  return `<div style="border:1px solid ${sevColor};padding:8px;margin-bottom:8px;background:rgba(0,0,0,0.2);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <span style="font-family:var(--mono);font-size:10px;color:${sevColor};font-weight:bold;">${d.severity} — ${d.flag_type}</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">${d.agent}</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px;">${d.description}</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--txt);margin-bottom:4px;line-height:1.4;">
+      <b>AI:</b> ${d.ai_recommendation || 'N/A'}
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:6px;line-height:1.3;">${d.ai_reasoning || ''}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:6px;">Confidence: <b>${d.ai_confidence || '?'}</b></div>
+    <div style="display:flex;gap:4px;">
+      <button onclick="approveDecision('${d.id}','APPROVED')" style="flex:1;background:var(--green);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">APPROVE</button>
+      <button onclick="approveDecision('${d.id}','OVERRIDDEN')" style="flex:1;background:var(--amber);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">OVERRIDE</button>
+      <button onclick="approveDecision('${d.id}','DEFERRED')" style="flex:1;background:var(--dim);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">DEFER</button>
+    </div>
+  </div>`;
+}
+
+function _resolvedCardHtml(d) {
+  const actionColor = d.operator_action === 'APPROVED' ? 'var(--green)' : d.operator_action === 'OVERRIDDEN' ? 'var(--amber)' : 'var(--dim)';
+  return `<div style="border:1px solid var(--border);padding:6px;margin-bottom:4px;opacity:0.7;">
+    <div style="font-family:var(--mono);font-size:9px;">
+      <span style="color:${actionColor};">${d.operator_action || d.status}</span> —
+      <span style="color:var(--dim);">${d.flag_type} (${d.agent})</span>
+    </div>
+  </div>`;
+}
+
+function approveDecision(id, action) {
+  fetch('/api/advisor/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: id, action: action, note: '' }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        _renderAdvisorDecisions();
+      }
+    })
+    .catch(err => console.error('Approve failed:', err));
 }
 
 // ─── Update mosaic base layer ────────────────────────────────────────────────

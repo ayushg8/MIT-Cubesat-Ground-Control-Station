@@ -629,6 +629,32 @@ def api_select_route():
     return jsonify({"selected": route_name})
 
 
+@app.route("/api/recommend_landing")
+def api_recommend_landing():
+    """Run the landing site recommender and return top candidates."""
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+    try:
+        result = _pipeline.recommend_landing_sites()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"recommend_landing failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mission_summary")
+def api_mission_summary():
+    """Return aggregated mission summary with landing recommendation."""
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+    try:
+        result = _pipeline.get_mission_summary()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"mission_summary failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API — commands
 # ─────────────────────────────────────────────────────────────────────────────

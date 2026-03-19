@@ -59,7 +59,7 @@ SEG_COST_MAP = {                   # Semantic label → traversal cost for A* ro
     1: COST_SAFE,                  # SAND — safe
     2: COST_SAFE,                  # PLAIN_SURFACE — safe
     3: COST_SHADOW,                # SHADOW — uncertain, high cost
-    4: COST_HAZARD,                # CRATER — very risky
+    4: COST_IMPASSABLE,             # CRATER — impassable (same as boulder)
     5: COST_IMPASSABLE,            # BOULDER — impassable
 }
 
@@ -92,6 +92,19 @@ SLOPE_GENTLE_DEG = 15.0             # no penalty
 SLOPE_MODERATE_DEG = 30.0           # 2x cost
 SLOPE_STEEP_DEG = 45.0              # 5x cost, above = impassable
 SLOPE_ENABLED = True
+
+# === LANDING SITE RECOMMENDER ===
+LANDING_MIN_RADIUS_CM = 5.0          # Minimum safe zone radius around landing point
+LANDING_CANDIDATE_STRIDE = 2         # Sample every Nth fine grid cell (performance tuning)
+LANDING_TOP_K = 3                    # Return top K candidates
+LANDING_WEIGHTS = {                  # Scoring weights (sum ≈ 1.0)
+    "hazard_clearance": 0.30,
+    "zone_size": 0.20,
+    "confidence": 0.15,
+    "flatness": 0.20,
+    "route_viability": 0.15,
+}
+LANDING_MIN_CLEARANCE_CM = 3.0       # Hard reject if nearest hazard < this
 
 # === TRAVERSABILITY CNN ===
 CNN_MODEL_PATH = "models/traversability_model.pt"

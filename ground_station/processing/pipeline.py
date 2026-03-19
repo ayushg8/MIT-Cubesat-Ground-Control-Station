@@ -41,6 +41,7 @@ from processing.shadow_detector import ShadowDetector
 from processing.pixel_segmenter import PixelSegmenter
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 from processing.slope_estimator import SlopeEstimator
+from processing.landing_recommender import LandingRecommender
 from processing import ppo_planner
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class Pipeline:
         self._route_planner      = RoutePlanner()
         self._pixel_segmenter    = PixelSegmenter()
         self._slope_estimator    = SlopeEstimator()
+        self._landing_recommender = LandingRecommender()
 
         # YOLO detection state (accumulated across images)
         self._yolo_detections: dict = {}   # {"filename": [detection_dicts]}
@@ -622,6 +624,10 @@ class Pipeline:
 
                 H = entry.homography
                 for det in dets:
+                    # Skip shadow detections — not useful on the map
+                    if det.get("class", "").lower() == "shadow":
+                        continue
+
                     bbox = det.get("bbox") or det.get("box")
                     if not bbox:
                         continue
@@ -643,16 +649,130 @@ class Pipeline:
                     except Exception:
                         continue
 
+                    # Project contour polygon to mosaic space
+                    contour_mosaic = None
+                    raw_contour = det.get("contour")
+                    if raw_contour and len(raw_contour) >= 3:
+                        try:
+                            cpts = np.array(raw_contour, dtype=np.float64).reshape(-1, 1, 2)
+                            cpts_mosaic = cv2.perspectiveTransform(cpts, H).reshape(-1, 2)
+                            contour_mosaic = [[round(float(p[0]), 1), round(float(p[1]), 1)]
+                                              for p in cpts_mosaic]
+                        except Exception:
+                            contour_mosaic = None
+
                     detections.append({
                         "class": det.get("class", "unknown"),
                         "confidence": det.get("confidence", 0.0),
                         "bbox_mosaic": [round(mx1, 1), round(my1, 1), round(mx2, 1), round(my2, 1)],
                         "center_mosaic": [round(mcx, 1), round(mcy, 1)],
+                        "contour_mosaic": contour_mosaic,
                         "source_image": filename,
                         "original_class": det.get("original_class", det.get("class", "")),
                     })
 
             return detections
+
+    def recommend_landing_sites(self) -> dict:
+        """Run the landing recommender on current grid state."""
+        with self._lock:
+            fine_cost = self._mosaic_grid.get_fine_cost_grid()
+            fine_hazard = self._mosaic_grid.get_fine_hazard_grid()
+            obs_count = self._mosaic_grid.get_observation_count()
+            conf_grid = self._mosaic_grid.get_confidence_grid()
+            surv_mask = self._mosaic_grid.get_surveyed_mask()
+            slope = self._mosaic_grid.get_slope_grid()
+            fr = self._mosaic_grid.fine_rows
+            fc = self._mosaic_grid.fine_cols
+            cr = self._mosaic_grid.rows
+            cc = self._mosaic_grid.cols
+
+        return self._landing_recommender.recommend(
+            fine_cost, fine_hazard, obs_count, conf_grid,
+            surv_mask, slope, fr, fc, cr, cc,
+        )
+
+    def get_mission_summary(self) -> dict:
+        """Aggregate mission data into a summary dict."""
+        state = self._mission_state.get_snapshot() if self._mission_state else {}
+        mosaic_info = self.get_mosaic_info()
+
+        total_images = mosaic_info.get("image_count", 0)
+
+        # Coverage
+        with self._lock:
+            cells_surveyed = self._mosaic_grid.get_cells_surveyed()
+            cells_total = self._mosaic_grid.get_cells_total()
+        coverage_pct = round(100.0 * cells_surveyed / max(1, cells_total), 1)
+
+        # Hazard counts from YOLO detections
+        craters = 0
+        boulders = 0
+        for dets in self._yolo_detections.values():
+            for d in dets:
+                cls = (d.get("class") or "").lower()
+                if "crater" in cls:
+                    craters += 1
+                elif "boulder" in cls or "rock" in cls:
+                    boulders += 1
+
+        # Landing recommendation
+        try:
+            landing = self.recommend_landing_sites()
+            top_candidate = landing["candidates"][0] if landing["candidates"] else None
+        except Exception:
+            landing = None
+            top_candidate = None
+
+        # Route stats from mission state
+        routes_state = state.get("routes", {})
+        route_stats = {}
+        for key in ("safest", "fastest", "balanced"):
+            r = routes_state.get(key)
+            if r and r.get("status") == "found":
+                dist_cells = r.get("path_length_cells", 0)
+                dist_cm = round(dist_cells * config.GRID_CELL_SIZE_CM, 1)
+                route_stats[key] = {
+                    "distance_cm": dist_cm,
+                    "cost": r.get("total_cost", 0),
+                }
+
+        # Assessment text
+        landing_score_pct = round(top_candidate["score"] * 100) if top_candidate else 0
+        exit_routes = top_candidate["breakdown"]["route_viability"]["edges_reached"] if top_candidate else 0
+        if coverage_pct >= 50 and landing_score_pct >= 60:
+            assessment = (
+                f"NOMINAL — {coverage_pct}% surveyed, landing score {landing_score_pct}%, "
+                f"{exit_routes} exit routes confirmed."
+            )
+        elif coverage_pct >= 30:
+            assessment = (
+                f"MARGINAL — {coverage_pct}% surveyed, landing score {landing_score_pct}%. "
+                f"More survey data recommended."
+            )
+        else:
+            assessment = (
+                f"INSUFFICIENT — only {coverage_pct}% surveyed. "
+                f"Cannot reliably recommend landing site."
+            )
+
+        result = {
+            "total_images": total_images,
+            "coverage_pct": coverage_pct,
+            "hazards_detected": {
+                "craters": craters,
+                "boulders": boulders,
+                "total": craters + boulders,
+            },
+            "recommended_landing": {
+                "position_cm": top_candidate["position_cm"],
+                "score": top_candidate["score"],
+                "breakdown": top_candidate["breakdown"],
+            } if top_candidate else None,
+            "route_stats": route_stats,
+            "assessment": assessment,
+        }
+        return result
 
     def get_mosaic_info(self) -> dict:
         """Return mosaic metadata for the dashboard."""

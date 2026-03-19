@@ -586,7 +586,23 @@ input.active-input { border-color: var(--cyan); }
           <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
         </div>
         <div class="pnl-body">
-          <!-- Active transfer info (hidden when idle) -->
+          <!-- Overall session progress (all images in this downlink window) -->
+          <div id="dl-session-wrap" style="display:none; margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px;">
+              <span style="color:var(--bright);font-weight:600;" id="dl-sess-label">Overall</span>
+              <span id="dl-sess-count" style="color:var(--dim);">0 / 0 images</span>
+            </div>
+            <div class="dl-progress-track" style="height:6px;margin:4px 0 6px;">
+              <div class="dl-progress-fill" id="dl-sess-bar" style="width:0%;background:var(--green);"></div>
+            </div>
+            <div class="dl-stats" style="font-size:11px;">
+              <div><div style="color:var(--dim);">Total</div><div id="dl-sess-bytes" style="color:var(--bright);">--</div></div>
+              <div><div style="color:var(--dim);">Rate</div><div id="dl-sess-rate" style="color:var(--bright);">--</div></div>
+              <div><div style="color:var(--dim);">ETA</div><div id="dl-sess-eta" style="color:var(--bright);">--</div></div>
+              <div><div style="color:var(--dim);">Elapsed</div><div id="dl-sess-elapsed" style="color:var(--bright);">--</div></div>
+            </div>
+          </div>
+          <!-- Active transfer info (hidden when idle) — current image -->
           <div id="dl-active-wrap" class="dl-live-wrap" style="display:none;">
             <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
               <span id="dl-filename" style="color:var(--bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">--</span>
@@ -661,6 +677,7 @@ input.active-input { border-color: var(--cyan); }
       <div class="mosaic-controls">
         <button id="btn-set-landing" onclick="mosaicSetMode('landing')" title="Click mosaic to set landing point">SET LANDING</button>
         <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
+        <button id="btn-auto-landing" onclick="autoRecommendLanding()" style="background:var(--cyan);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-RECOMMEND LANDING</button>
         <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
       </div>
       <div id="mosaic-map"></div>
@@ -888,6 +905,20 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+  // Leaflet needs to be initialized when its container is first visible
+  if (name === 'terrain') {
+    setTimeout(function() {
+      ensureLeafletMap();
+      if (_leafletMap) {
+        _leafletMap.invalidateSize();
+        // Load mosaic image if we have info
+        if (_mosaicInfo && _mosaicInfo.image_count > 0) _updateMosaicImage(_mosaicInfo);
+        // Redraw routes if we have them
+        if (_mosaicRouteData && _mosaicInfo) _updateRoutes(_mosaicRouteData, _mosaicInfo);
+        _updateEndpointMarkers();
+      }
+    }, 50);
+  }
 }
 
 // ─── Topbar dropdown toggle ───────────────────────────────────────────────────
@@ -1496,6 +1527,10 @@ async function planRoutes(btn) {
   const fb = el('plan-routes-feedback');
   if (btn) { btn.disabled = true; btn.textContent = 'PLANNING...'; }
   fb.textContent = ''; fb.style.color = 'var(--text-dim)';
+  // Ensure mosaic info is loaded for route rendering
+  if (!_mosaicInfo) {
+    try { const mi = await fetch('/api/mosaic_info'); if (mi.ok) _mosaicInfo = await mi.json(); } catch(e) {}
+  }
   try {
     const r = await fetch('/api/plan_routes', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1511,7 +1546,15 @@ async function planRoutes(btn) {
       fb.textContent = 'ROUTES UPDATED'; fb.style.color = 'var(--green)';
       if (btn) flashBtn(btn, true);
       _mosaicRouteData = d;
-      mosaicRedraw();
+      // Draw routes immediately on the mosaic
+      console.log('planRoutes got data:', JSON.stringify(Object.keys(d)), '_mosaicInfo:', !!_mosaicInfo);
+      if (_mosaicInfo) {
+        console.log('Calling _updateRoutes with mosaicInfo w=', _mosaicInfo.width, 'h=', _mosaicInfo.height);
+        _updateRoutes(d, _mosaicInfo);
+      } else {
+        console.warn('planRoutes: _mosaicInfo is null, routes cannot be drawn');
+      }
+      _updateEndpointMarkers();
     }
   } catch(e) { fb.textContent='ERROR'; fb.style.color='var(--red)'; if(btn)flashBtn(btn,false); }
   if (btn) { btn.disabled = false; btn.textContent = 'PLAN ROUTES'; }
@@ -1547,6 +1590,7 @@ let _routeLayer = null;
 let _changeLayer = null;
 let _landingMarker = null;
 let _targetMarker = null;
+let _landingCandidatesLayer = null;
 
 // Catmull-Rom spline interpolation for smooth routes
 function catmullRomSpline(points, numSegments) {
@@ -1614,7 +1658,11 @@ function slopeCellColor(slopeDeg) {
 }
 
 // ─── Initialize Leaflet map ──────────────────────────────────────────────────
-(function initLeafletMap() {
+let _leafletMapInited = false;
+function ensureLeafletMap() {
+  if (_leafletMapInited) return;
+  _leafletMapInited = true;
+
   const mapDiv = document.getElementById('mosaic-map');
   if (!mapDiv) return;
 
@@ -1630,12 +1678,17 @@ function slopeCellColor(slopeDeg) {
   // Set initial view (will be updated when mosaic loads)
   _leafletMap.setView([0, 0], 0);
 
+  // Custom pane for routes so they render above the image overlay
+  _leafletMap.createPane('routePane');
+  _leafletMap.getPane('routePane').style.zIndex = 650;
+
   // Create overlay layer groups
   _hazardMarkersLayer = L.layerGroup().addTo(_leafletMap);
   _costGridLayer = L.layerGroup();
   _slopeGridLayer = L.layerGroup();
   _routeLayer = L.layerGroup().addTo(_leafletMap);
   _changeLayer = L.layerGroup().addTo(_leafletMap);
+  _landingCandidatesLayer = L.layerGroup().addTo(_leafletMap);
 
   // Layer control
   L.control.layers(null, {
@@ -1644,6 +1697,7 @@ function slopeCellColor(slopeDeg) {
     'Slopes': _slopeGridLayer,
     'Routes': _routeLayer,
     'Changes': _changeLayer,
+    'Landing Candidates': _landingCandidatesLayer,
   }, { collapsed: false, position: 'topright' }).addTo(_leafletMap);
 
   // Click handler for landing/target mode
@@ -1669,7 +1723,7 @@ function slopeCellColor(slopeDeg) {
       planRoutes(null);
     }
   });
-})();
+}
 
 function _updateEndpointMarkers() {
   if (_landingMarker) { _leafletMap.removeLayer(_landingMarker); _landingMarker = null; }
@@ -1678,17 +1732,113 @@ function _updateEndpointMarkers() {
   if (_routeStartMosaic) {
     const ll = mosaicToLatLng(_routeStartMosaic[0], _routeStartMosaic[1]);
     _landingMarker = L.circleMarker(ll, {
-      radius: 10, color: '#0a0e17', fillColor: '#00c875', fillOpacity: 1, weight: 2,
+      radius: 10, color: '#0a0e17', fillColor: '#00c875', fillOpacity: 1, weight: 2, pane: 'routePane',
     }).addTo(_leafletMap);
     _landingMarker.bindTooltip('Landing (L)', { permanent: true, direction: 'top', className: '' });
   }
   if (_routeEndMosaic) {
     const ll = mosaicToLatLng(_routeEndMosaic[0], _routeEndMosaic[1]);
     _targetMarker = L.circleMarker(ll, {
-      radius: 10, color: '#0a0e17', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2,
+      radius: 10, color: '#0a0e17', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2, pane: 'routePane',
     }).addTo(_leafletMap);
     _targetMarker.bindTooltip('Target (T)', { permanent: true, direction: 'top', className: '' });
   }
+}
+
+// ─── Auto-recommend landing ──────────────────────────────────────────────────
+function autoRecommendLanding() {
+  const fb = el('plan-routes-feedback');
+  fb.textContent = 'Analyzing terrain for landing sites...';
+  fb.style.color = 'var(--cyan)';
+
+  fetch('/api/recommend_landing')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { fb.textContent = 'Error: ' + data.error; fb.style.color = 'var(--red)'; return; }
+
+      _landingCandidatesLayer.clearLayers();
+
+      const colors = ['#00ff88', '#00d4ff', '#ffaa00'];
+      const labels = ['#1 BEST', '#2', '#3'];
+
+      if (!data.candidates || data.candidates.length === 0) {
+        fb.textContent = 'No viable landing sites found.';
+        fb.style.color = 'var(--red)';
+        return;
+      }
+
+      data.candidates.forEach((cand, i) => {
+        const [mx, my] = cand.mosaic_px;
+        const ll = mosaicToLatLng(mx, my);
+        const color = colors[i] || '#ffaa00';
+        const radiusPx = (data.min_radius_cm || 5) * 8;  // MOSAIC_PX_PER_CM
+
+        // Clearance radius circle
+        const circle = L.circle(ll, {
+          radius: radiusPx,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.12,
+          weight: 2,
+          dashArray: '5,5',
+          pane: 'routePane',
+        });
+        _landingCandidatesLayer.addLayer(circle);
+
+        // Marker
+        const marker = L.circleMarker(ll, {
+          radius: i === 0 ? 12 : 8,
+          color: '#0a0e17',
+          fillColor: color,
+          fillOpacity: 1,
+          weight: 2,
+          pane: 'routePane',
+        });
+
+        const b = cand.breakdown;
+        const pct = (v) => Math.round(v * 100) + '%';
+        const popupHtml = `
+          <div style="font-family:var(--mono);font-size:11px;min-width:200px;">
+            <b style="color:${color};">${labels[i]} — Score ${pct(cand.score)}</b><br>
+            <b>Position:</b> (${cand.position_cm[0]}, ${cand.position_cm[1]}) cm<br>
+            <table style="width:100%;margin-top:4px;border-collapse:collapse;">
+              <tr><td>Hazard Clearance</td><td>${pct(b.hazard_clearance.score)}</td><td>${b.hazard_clearance.value_cm} cm</td></tr>
+              <tr><td>Zone Size</td><td>${pct(b.zone_size.score)}</td><td>${b.zone_size.value_cm2} cm²</td></tr>
+              <tr><td>Confidence</td><td>${pct(b.confidence.score)}</td><td>${b.confidence.avg_observations} obs</td></tr>
+              <tr><td>Flatness</td><td>${pct(b.flatness.score)}</td><td>cost ${b.flatness.avg_cost}</td></tr>
+              <tr><td>Route Viability</td><td>${pct(b.route_viability.score)}</td><td>${b.route_viability.edges_reached}/4 edges</td></tr>
+            </table>
+          </div>`;
+        marker.bindPopup(popupHtml);
+        marker.bindTooltip(labels[i], { permanent: true, direction: 'top', className: '' });
+        _landingCandidatesLayer.addLayer(marker);
+
+        // Auto-set #1 as the landing point
+        if (i === 0) {
+          _routeStartMosaic = [mx, my];
+          _updateEndpointMarkers();
+        }
+      });
+
+      const best = data.candidates[0];
+      fb.textContent = `Best landing: score ${Math.round(best.score * 100)}% at (${best.position_cm[0]}, ${best.position_cm[1]}) cm — ${data.total_evaluated} cells evaluated`;
+      fb.style.color = 'var(--green)';
+    })
+    .catch(err => {
+      fb.textContent = 'Landing recommendation failed: ' + err;
+      fb.style.color = 'var(--red)';
+    });
+}
+
+// ─── Mission summary ─────────────────────────────────────────────────────────
+function loadMissionSummary() {
+  fetch('/api/mission_summary')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { console.warn('Mission summary error:', data.error); return; }
+      console.log('Mission summary:', data);
+    })
+    .catch(err => console.warn('Mission summary fetch failed:', err));
 }
 
 // ─── Update mosaic base layer ────────────────────────────────────────────────
@@ -1706,6 +1856,7 @@ function _updateMosaicImage(mosaicInfo) {
   if (_mosaicImageLayer) {
     _mosaicImageLayer.setUrl(url);
     _mosaicImageLayer.setBounds(bounds);
+    _mosaicImageLayer.bringToBack();
   } else {
     _mosaicImageLayer = L.imageOverlay(url, bounds).addTo(_leafletMap);
     _mosaicImageLayer.bringToBack();
@@ -1724,20 +1875,21 @@ function _updateHazardMarkers(detections) {
     const color = getHazardColor(det.class);
     const ll = mosaicToLatLng(mcx, mcy);
 
-    // Circle marker at detection center
-    const marker = L.circleMarker(ll, {
-      radius: 6, color: color, fillColor: color, fillOpacity: 0.7, weight: 2,
-    });
-    marker.bindPopup(
+    const popupContent =
       `<b>${det.class}</b><br>` +
       `Confidence: ${(det.confidence * 100).toFixed(0)}%<br>` +
       `Source: ${det.source_image}<br>` +
-      `Position: (${Math.round(mcx)}, ${Math.round(mcy)})`
-    );
-    _hazardMarkersLayer.addLayer(marker);
+      `Position: (${Math.round(mcx)}, ${Math.round(mcy)})`;
 
-    // Bounding box rectangle
-    if (det.bbox_mosaic) {
+    // Contour polygon (preferred) or fallback bbox rectangle
+    if (det.contour_mosaic && det.contour_mosaic.length >= 3) {
+      const contourLatLngs = det.contour_mosaic.map(p => mosaicToLatLng(p[0], p[1]));
+      const poly = L.polygon(contourLatLngs, {
+        color: color, weight: 2, fillColor: color, fillOpacity: 0.25,
+      });
+      poly.bindPopup(popupContent);
+      _hazardMarkersLayer.addLayer(poly);
+    } else if (det.bbox_mosaic) {
       const [bx1, by1, bx2, by2] = det.bbox_mosaic;
       const rectBounds = L.latLngBounds(
         mosaicToLatLng(bx1, by2),
@@ -1746,8 +1898,25 @@ function _updateHazardMarkers(detections) {
       const rect = L.rectangle(rectBounds, {
         color: color, weight: 1, fillOpacity: 0.1, dashArray: '4 2',
       });
+      rect.bindPopup(popupContent);
       _hazardMarkersLayer.addLayer(rect);
     }
+
+    // Detection label at center
+    const labelText = `${det.class.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+    const labelIcon = L.divIcon({
+      className: '',
+      html: `<div style="
+        background:${color}; color:#fff; font-size:10px; font-weight:700;
+        font-family:var(--mono,monospace); padding:1px 4px; border-radius:3px;
+        white-space:nowrap; pointer-events:none; opacity:0.9;
+        text-shadow:0 1px 2px rgba(0,0,0,0.5);
+      ">${labelText}</div>`,
+      iconSize: null,
+      iconAnchor: [0, -8],
+    });
+    const labelMarker = L.marker(ll, { icon: labelIcon, interactive: false });
+    _hazardMarkersLayer.addLayer(labelMarker);
 
     // Sidebar entry
     sidebarHtml += `<div class="hazard-item" onclick="_leafletMap.flyTo(L.latLng(${-mcy},${mcx}), 1)">` +
@@ -1834,16 +2003,18 @@ async function _updateSlopeGrid(mosaicInfo) {
 
 // ─── Update route overlays ───────────────────────────────────────────────────
 function _updateRoutes(routes, mosaicInfo) {
+  if (!_routeLayer) { console.warn('_updateRoutes: _routeLayer is null'); return; }
   _routeLayer.clearLayers();
-  if (!routes || !mosaicInfo) return;
+  if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo'); return; }
 
   const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
   const selected = routes.selected || 'safest';
 
   const routeDefs = [
-    {key:'fastest', color:'#00ff88', dashArray:'8 6', weight: 3},
-    {key:'safest',  color:'#4488ff', dashArray:null,  weight: 3},
-    {key:'balanced',color:'#ffaa00', dashArray:'4 4', weight: 3},
+    {key:'fastest', color:'#00ff88', dashArray:'8 6', weight: 5},
+    {key:'safest',  color:'#4488ff', dashArray:null,  weight: 5},
+    {key:'balanced',color:'#ffaa00', dashArray:'4 4', weight: 5},
+    {key:'ppo',     color:'#ff44ff', dashArray:'2 4', weight: 5},
   ];
 
   for (const rd of routeDefs) {
@@ -1866,18 +2037,48 @@ function _updateRoutes(routes, mosaicInfo) {
     const smoothPoints = catmullRomSpline(rawPoints, 4);
     const latlngs = smoothPoints.map(p => mosaicToLatLng(p[0], p[1]));
 
+    console.log(`Route ${rd.key}: ${latlngs.length} latlng pts, first=`, latlngs[0], 'last=', latlngs[latlngs.length-1]);
+
     const isSel = rd.key === selected;
     const line = L.polyline(latlngs, {
       color: rd.color,
-      weight: isSel ? rd.weight + 1 : rd.weight,
-      opacity: isSel ? 1.0 : 0.4,
+      weight: isSel ? rd.weight + 2 : rd.weight,
+      opacity: isSel ? 1.0 : 0.7,
       dashArray: rd.dashArray,
       lineCap: 'round',
       lineJoin: 'round',
+      pane: 'routePane',
     });
     line.bindPopup(`<b>${(rdata.name || rd.key).toUpperCase()}</b><br>Length: ${rdata.path_length_cells || '--'} cells<br>Cost: ${rdata.total_cost || '--'}`);
     _routeLayer.addLayer(line);
+
+    // Route midpoint label
+    if (latlngs.length >= 2) {
+      const midIdx = Math.floor(latlngs.length / 2);
+      const midLL = latlngs[midIdx];
+      const routeName = (rdata.name || rd.key).toUpperCase();
+      const dist = rdata.distance_m ? `${rdata.distance_m.toFixed(1)}m` : (rdata.path_length_cells ? `${rdata.path_length_cells} cells` : '');
+      const cost = rdata.total_cost != null ? `cost ${Math.round(rdata.total_cost)}` : '';
+      const parts = [routeName, dist, cost].filter(Boolean).join(' | ');
+      const routeLabelIcon = L.divIcon({
+        className: '',
+        html: `<div style="
+          background:${rd.color}; color:#fff; font-size:10px; font-weight:700;
+          font-family:var(--mono,monospace); padding:2px 6px; border-radius:3px;
+          white-space:nowrap; pointer-events:none; opacity:0.9;
+          text-shadow:0 1px 2px rgba(0,0,0,0.5);
+          border:1px solid rgba(255,255,255,0.3);
+        ">${parts}</div>`,
+        iconSize: null,
+        iconAnchor: [0, 12],
+      });
+      const routeLabelMarker = L.marker(midLL, { icon: routeLabelIcon, interactive: false, pane: 'routePane' });
+      _routeLayer.addLayer(routeLabelMarker);
+    }
   }
+  // Bring routes to front
+  _routeLayer.eachLayer(l => { if (l.bringToFront) l.bringToFront(); });
+  console.log('_updateRoutes: added', _routeLayer.getLayers().length, 'route lines');
 }
 
 // ─── Update change overlays ──────────────────────────────────────────────────
@@ -1903,7 +2104,10 @@ function _updateChanges(heatmapData, mosaicInfo) {
 }
 
 function mosaicRedraw() {
-  // Trigger layer updates on next poll
+  if (_mosaicRouteData && _mosaicInfo) _updateRoutes(_mosaicRouteData, _mosaicInfo);
+  if (_heatmapData && _mosaicInfo) _updateCostGrid(_heatmapData, _mosaicInfo);
+  if (_hazardDetections) _updateHazardMarkers(_hazardDetections);
+  _updateEndpointMarkers();
 }
 
 // ─── Mosaic data polling ─────────────────────────────────────────────────────
@@ -2717,6 +2921,15 @@ setInterval(pollYolo,        POLL_HEATMAP_MS);
   const elapsedEl = document.getElementById('dl-elapsed');
   const pctEl     = document.getElementById('dl-pct');
   const histEl    = document.getElementById('dl-history');
+  // Overall session elements
+  const sessWrap    = document.getElementById('dl-session-wrap');
+  const sessLabel   = document.getElementById('dl-sess-label');
+  const sessCount   = document.getElementById('dl-sess-count');
+  const sessBar     = document.getElementById('dl-sess-bar');
+  const sessBytes   = document.getElementById('dl-sess-bytes');
+  const sessRate    = document.getElementById('dl-sess-rate');
+  const sessEta     = document.getElementById('dl-sess-eta');
+  const sessElapsed = document.getElementById('dl-sess-elapsed');
 
   function fmtBytes(n) {
     if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
@@ -2726,6 +2939,13 @@ setInterval(pollYolo,        POLL_HEATMAP_MS);
   function fmtRate(bps) {
     if (bps >= 1024) return (bps / 1024).toFixed(1) + ' KB/s';
     return Math.round(bps) + ' B/s';
+  }
+  function fmtTime(sec) {
+    if (!sec || sec <= 0) return '--';
+    if (sec < 60) return sec.toFixed(1) + 's';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return m + 'm ' + s + 's';
   }
 
   const STATUS_COLORS = {
@@ -2749,6 +2969,7 @@ setInterval(pollYolo,        POLL_HEATMAP_MS);
     if (s === 'idle') {
       activeEl.style.display = 'none';
       idleEl.style.display = '';
+      sessWrap.style.display = 'none';
       badgeEl.textContent = '-- B/s';
       return;
     }
@@ -2770,6 +2991,20 @@ setInterval(pollYolo,        POLL_HEATMAP_MS);
     etaEl.textContent = d.eta_sec > 0 ? d.eta_sec.toFixed(1) : '--';
     elapsedEl.textContent = d.elapsed_sec > 0 ? d.elapsed_sec.toFixed(1) : '--';
     pctEl.textContent = d.pct + '%';
+
+    // Overall session progress
+    const sess = d.session;
+    if (sess) {
+      sessWrap.style.display = '';
+      sessCount.textContent = sess.current_image + ' / ' + sess.total_images + ' images';
+      sessBar.style.width = sess.pct + '%';
+      sessBytes.textContent = fmtBytes(sess.bytes_done) + ' / ' + fmtBytes(sess.total_bytes);
+      sessRate.textContent = fmtRate(sess.rate_bps);
+      sessEta.textContent = fmtTime(sess.eta_sec);
+      sessElapsed.textContent = fmtTime(sess.elapsed_sec);
+    } else {
+      sessWrap.style.display = 'none';
+    }
   };
 
   // Also fetch transfer history on load and periodically

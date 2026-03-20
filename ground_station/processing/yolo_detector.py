@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 _MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 _TERRAIN_MODEL_PATH = os.path.join(_MODEL_DIR, "terrain_detector.pt")
 _LUNAR_MODEL_PATH = os.path.join(_MODEL_DIR, "lunar_detector.pt")
+_LOCAL_COCO_MODEL_PATH = os.path.join(_MODEL_DIR, "yolov8n.pt")
 _DETECTIONS_DIR = os.path.join(config.PROCESSED_DIR, "yolo_detections")
 
 
@@ -90,11 +91,16 @@ class YOLODetector:
                 self._is_lunar = True
                 self._model_name = "lunar_yolov8"
                 logger.info(f"YOLO: loaded lunar-trained model from {_LUNAR_MODEL_PATH}")
-            else:
-                self._model = YOLO("yolov8n.pt")
+            elif os.path.exists(_LOCAL_COCO_MODEL_PATH):
+                self._model = YOLO(_LOCAL_COCO_MODEL_PATH)
                 self._is_lunar = False
-                self._model_name = "coco_yolov8n_fallback"
-                logger.info("YOLO: using COCO-pretrained YOLOv8n (lunar model not found)")
+                self._model_name = "coco_yolov8n_local"
+                logger.info(f"YOLO: using local COCO fallback from {_LOCAL_COCO_MODEL_PATH}")
+            else:
+                self._model = None
+                self._is_lunar = False
+                self._model_name = "classical_cv_fallback"
+                logger.warning("YOLO: no local weights found — using classical crater/boulder fallback")
 
             self._model_loaded = True
 
@@ -102,6 +108,7 @@ class YOLODetector:
             logger.error(f"YOLO: failed to load model: {e}")
             self._model_loaded = True  # Don't retry
             self._model = None
+            self._model_name = "classical_cv_fallback"
 
     @property
     def model_name(self) -> str:
@@ -133,8 +140,7 @@ class YOLODetector:
         self._load_model()
 
         if self._model is None:
-            logger.warning("YOLO: no model available — skipping detection")
-            return []
+            return self._detect_classical(image_path)
 
         try:
             results = self._model(image_path, conf=confidence_threshold, verbose=False)
@@ -194,9 +200,212 @@ class YOLODetector:
                     "contour": contour,
                 })
 
-        # Sort by confidence descending
+        # If the detector is using generic COCO weights or returned nothing,
+        # supplement it with classical lunar heuristics so the downstream
+        # segmenter still receives useful object seeds offline.
+        if not self._is_lunar or not detections:
+            detections = self._merge_detections(
+                detections,
+                self._detect_classical(image_path),
+            )
+
         detections.sort(key=lambda d: d["confidence"], reverse=True)
         return detections
+
+    def _detect_classical(self, image_path: str) -> list[dict]:
+        """Fallback crater/boulder detector for offline or missing-weight operation."""
+        img = cv2.imread(image_path)
+        if img is None:
+            logger.error(f"YOLO fallback: cannot read image '{image_path}'")
+            return []
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        blur = cv2.GaussianBlur(clahe, (9, 9), 0)
+
+        detections = []
+        detections.extend(self._detect_craters(clahe, blur))
+        detections.extend(self._detect_boulders(clahe))
+        detections = self._merge_detections([], detections)
+
+        if detections:
+            logger.info(
+                f"YOLO fallback: detected {len(detections)} candidate object(s) in "
+                f"{os.path.basename(image_path)}"
+            )
+        return detections
+
+    def _detect_craters(self, gray: np.ndarray, blur: np.ndarray) -> list[dict]:
+        h, w = gray.shape[:2]
+        img_area = h * w
+        min_radius = max(10, min(h, w) // 40)
+        max_radius = max(min_radius + 4, min(h, w) // 5)
+        circles = cv2.HoughCircles(
+            blur,
+            cv2.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=max(20, min(h, w) // 10),
+            param1=90,
+            param2=18,
+            minRadius=min_radius,
+            maxRadius=max_radius,
+        )
+
+        detections = []
+        if circles is None:
+            return detections
+
+        yy, xx = np.ogrid[:h, :w]
+        for cx, cy, radius in circles[0]:
+            cx_i, cy_i, r_i = int(cx), int(cy), int(radius)
+            if r_i < min_radius:
+                continue
+
+            inner = (xx - cx) ** 2 + (yy - cy) ** 2 <= (radius * 0.75) ** 2
+            ring = (
+                ((xx - cx) ** 2 + (yy - cy) ** 2 <= (radius * 1.2) ** 2)
+                & ~((xx - cx) ** 2 + (yy - cy) ** 2 <= (radius * 0.85) ** 2)
+            )
+            if not np.any(inner) or not np.any(ring):
+                continue
+
+            inner_mean = float(gray[inner].mean())
+            ring_mean = float(gray[ring].mean())
+            contrast = ring_mean - inner_mean
+            if contrast < 8.0:
+                continue
+
+            x1 = max(0, cx_i - r_i)
+            y1 = max(0, cy_i - r_i)
+            x2 = min(w, cx_i + r_i)
+            y2 = min(h, cy_i + r_i)
+            area = (x2 - x1) * (y2 - y1)
+            if area <= 0 or area > img_area * 0.20:
+                continue
+
+            duplicate = False
+            for existing in detections:
+                ex, ey = existing["center"]
+                er = max(1, (existing["bbox"][2] - existing["bbox"][0]) // 2)
+                if ((ex - cx_i) ** 2 + (ey - cy_i) ** 2) ** 0.5 < max(er, r_i) * 0.65:
+                    duplicate = True
+                    break
+            if duplicate:
+                continue
+
+            contour = cv2.ellipse2Poly((cx_i, cy_i), (r_i, r_i), 0, 0, 360, 12)
+            confidence = min(0.88, 0.45 + contrast / 40.0)
+            detections.append({
+                "class": "crater",
+                "confidence": round(confidence, 3),
+                "bbox": [x1, y1, x2, y2],
+                "area_px": int(area),
+                "center": [cx_i, cy_i],
+                "original_class": "classical_crater",
+                "contour": contour.reshape(-1, 2).astype(int).tolist(),
+            })
+
+        return detections
+
+    def _detect_boulders(self, gray: np.ndarray) -> list[dict]:
+        h, w = gray.shape[:2]
+        img_area = h * w
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        bright = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel)
+        dark = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
+
+        detections = []
+        for feature_map, flavor in ((bright, "bright"), (dark, "dark")):
+            thresh_val = max(12.0, float(feature_map.mean() + 1.2 * feature_map.std()))
+            _, mask = cv2.threshold(feature_map, thresh_val, 255, cv2.THRESH_BINARY)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=2)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area < 60 or area > img_area * 0.03:
+                    continue
+
+                perimeter = cv2.arcLength(cnt, True)
+                if perimeter <= 0:
+                    continue
+                circularity = float(4 * np.pi * area / (perimeter * perimeter))
+                if circularity < 0.18:
+                    continue
+
+                x, y, bw, bh = cv2.boundingRect(cnt)
+                aspect = max(bw, bh) / max(1.0, min(bw, bh))
+                if aspect > 2.4:
+                    continue
+
+                roi = gray[y:y + bh, x:x + bw]
+                if roi.size == 0:
+                    continue
+                pad = 4
+                y0 = max(0, y - pad)
+                x0 = max(0, x - pad)
+                y1 = min(h, y + bh + pad)
+                x1 = min(w, x + bw + pad)
+                ring = gray[y0:y1, x0:x1]
+                local_contrast = abs(float(roi.mean()) - float(ring.mean()))
+                if local_contrast < 9.0:
+                    continue
+
+                confidence = min(0.82, 0.35 + circularity * 0.45 + local_contrast / 50.0)
+                approx = cv2.approxPolyDP(cnt, 0.02 * perimeter, True)
+                detections.append({
+                    "class": "boulder",
+                    "confidence": round(confidence, 3),
+                    "bbox": [int(x), int(y), int(x + bw), int(y + bh)],
+                    "area_px": int(area),
+                    "center": [int(x + bw / 2), int(y + bh / 2)],
+                    "original_class": f"classical_boulder_{flavor}",
+                    "contour": approx.reshape(-1, 2).astype(int).tolist() if len(approx) >= 3 else None,
+                })
+
+        return detections
+
+    def _merge_detections(self, primary: list[dict], secondary: list[dict]) -> list[dict]:
+        merged = []
+        for det in sorted(primary + secondary, key=lambda d: d["confidence"], reverse=True):
+            duplicate = False
+            for existing in merged:
+                if det["class"] != existing["class"]:
+                    continue
+                if self._iou(det["bbox"], existing["bbox"]) >= 0.45:
+                    duplicate = True
+                    break
+            if not duplicate:
+                merged.append(det)
+
+        pruned = []
+        for det in merged:
+            if det["class"] == "boulder":
+                overshadowed = any(
+                    existing["class"] == "crater"
+                    and existing["confidence"] >= det["confidence"]
+                    and self._iou(det["bbox"], existing["bbox"]) >= 0.20
+                    for existing in merged
+                )
+                if overshadowed:
+                    continue
+            pruned.append(det)
+        return pruned
+
+    @staticmethod
+    def _iou(a: list[int], b: list[int]) -> float:
+        ax1, ay1, ax2, ay2 = a
+        bx1, by1, bx2, by2 = b
+        ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+        ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+        iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+        inter = iw * ih
+        if inter <= 0:
+            return 0.0
+        area_a = max(1, (ax2 - ax1) * (ay2 - ay1))
+        area_b = max(1, (bx2 - bx1) * (by2 - by1))
+        return inter / float(area_a + area_b - inter)
 
     def _map_class(self, cls_name: str) -> str | None:
         """Map a YOLO class name to a lunar terrain category."""

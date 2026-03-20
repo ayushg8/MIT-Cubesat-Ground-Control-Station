@@ -131,3 +131,11 @@ class Commander:
     def set_grid_cell(self, row: int, col: int) -> bool:
         """Set the next grid cell to image in real time during a pass."""
         return self.send_command({"cmd": "cell", "row": row, "col": col})
+
+    def observe_cell(self, row: int, col: int, reason: str = "") -> bool:
+        """Ask the CubeSat to prioritise first-look coverage of a cell."""
+        return self.send_command({"cmd": "observe_cell", "row": row, "col": col, "reason": reason})
+
+    def revisit_cell(self, row: int, col: int, reason: str = "") -> bool:
+        """Ask the CubeSat to revisit a cell for confirmation/refinement."""
+        return self.send_command({"cmd": "revisit_cell", "row": row, "col": col, "reason": reason})

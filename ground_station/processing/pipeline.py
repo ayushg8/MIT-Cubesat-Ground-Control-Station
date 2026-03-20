@@ -42,6 +42,7 @@ from processing.pixel_segmenter import PixelSegmenter
 from processing.yolo_detector import YOLODetector, fuse_classifications, save_detections_json
 from processing.slope_estimator import SlopeEstimator
 from processing.landing_recommender import LandingRecommender
+from processing.terrain_roughness import analyze_roughness as _analyze_roughness
 from processing import ppo_planner
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,31 @@ class Pipeline:
         if cw > 0 and ch > 0:
             self._mosaic_grid.update_from_mosaic(cw, ch)
 
+        # Restore grid state from persisted JSON files
+        cost_grid_path = os.path.join(config.PROCESSED_DIR, "cost_grid.json")
+        self._mosaic_grid.restore_from_json(cost_grid_path)
+
+        # Restore YOLO detections from persisted JSON
+        self._restore_yolo_detections()
+
+    def _restore_yolo_detections(self):
+        """Reload YOLO detections and fused results from persisted JSON."""
+        yolo_path = os.path.join(config.PROCESSED_DIR, "yolo_detections.json")
+        if not os.path.exists(yolo_path):
+            return
+        try:
+            with open(yolo_path) as f:
+                data = json.load(f)
+            dpc = data.get("detections_per_cell", {})
+            fused = data.get("fused_classifications", [])
+            if dpc:
+                self._yolo_detections = dpc
+                self._fused_results = fused
+                total = sum(len(v) for v in dpc.values())
+                logger.info(f"Pipeline: restored {total} YOLO detections from {len(dpc)} images")
+        except Exception as e:
+            logger.error(f"Pipeline: failed to restore YOLO detections: {e}")
+
     # ─────────────────────────────────────────────────────────────────────────
     # Public entry point
     # ─────────────────────────────────────────────────────────────────────────
@@ -148,6 +174,8 @@ class Pipeline:
                 self._mosaic_grid.update_from_mosaic(cw, ch)
 
             # Update mission state with dynamic coverage
+            coarse_rows, coarse_cols = self._mosaic_grid.get_cost_grid().shape
+            self._mission_state.record_grid_shape(coarse_rows, coarse_cols)
             self._mission_state.record_mosaic_update(
                 self._mosaic_grid.get_cells_surveyed(),
                 self._mosaic_grid.get_cells_total(),
@@ -246,7 +274,7 @@ class Pipeline:
                 cost_map = {
                     "SAFE": config.COST_SAFE, "MODERATE": config.COST_MODERATE,
                     "SHADOW": config.COST_SHADOW, "HAZARD": config.COST_HAZARD,
-                    "IMPASSABLE": config.COST_IMPASSABLE,
+                    "CRATER": config.COST_CRATER, "IMPASSABLE": config.COST_IMPASSABLE,
                 }
                 fused_result = {
                     "hazard_class": fused_class,
@@ -320,9 +348,15 @@ class Pipeline:
             except Exception as e:
                 logger.error(f"Pipeline [{basename}] traversability_cnn FAILED: {e}", exc_info=True)
 
+        # ── 4e. Terrain roughness analysis (runs on full mosaic) ──
+        try:
+            self._run_roughness_locked()
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] terrain_roughness FAILED: {e}", exc_info=True)
+
         # ── Update image index ──
         pass_number = metadata.get("pass_number", 1)
-        prev_entry = self._get_prev_entry(basename, pass_number)
+        prev_entry = self._get_prev_entry(basename, pass_number, mosaic_bbox=mosaic_bbox)
         self._record_in_index(basename, pass_number, image_path, quality_score, mosaic_bbox)
 
         # ── 5. Change detection (YOLO-assisted) ──
@@ -356,34 +390,11 @@ class Pipeline:
             except Exception as e:
                 logger.error(f"Pipeline [{basename}] change_detector FAILED: {e}", exc_info=True)
         else:
-            # Also check for overlapping entries from different filenames
-            overlapping = self._stitcher.get_overlapping_entries(mosaic_bbox)
-            prior_overlaps = [
-                e for e in overlapping
-                if e.filename != basename
-            ]
-            if prior_overlaps:
-                try:
-                    prev = prior_overlaps[-1]  # most recent overlapping entry
-                    prev_basename_ovl = os.path.basename(prev.image_path)
-                    yolo_before_ovl = self._yolo_detections.get(prev_basename_ovl, [])
-                    change_result = self._change_detector.detect(
-                        prev.image_path, image_path, grid_cell, 0, pass_number,
-                        yolo_before=yolo_before_ovl,
-                        yolo_after=yolo_after,
-                    )
-                    if change_result and change_result["change_summary"]["total_events"] > 0:
-                        has_change = True
-                        self._mission_state.record_change_result(
-                            change_result["change_summary"],
-                            change_result["change_events"],
-                        )
-                        logger.info(
-                            f"Pipeline [{basename}] change (overlap): "
-                            f"{change_result['change_summary']['total_events']} event(s)"
-                        )
-                except Exception as e:
-                    logger.error(f"Pipeline [{basename}] change_detector (overlap) FAILED: {e}", exc_info=True)
+            # Single pass — no change detection on overlapping same-pass images.
+            # Comparing same-pass overlaps produces false positives from parallax.
+            logger.debug(
+                f"Pipeline [{basename}] change: skipped — no prior pass for this cell"
+            )
 
         # ── 6. Route planning ──
         if self._route_start_mosaic is not None and self._route_end_mosaic is not None:
@@ -452,6 +463,27 @@ class Pipeline:
 
         # ── 7. Save cost_grid.json ──
         try:
+            flight_science = metadata.get("science", {}) if isinstance(metadata, dict) else {}
+            self._mission_state.record_cell_observation({
+                "filename": basename,
+                "grid_cell": grid_cell,
+                "pass_number": metadata.get("pass_number", 0),
+                "timestamp": metadata.get("timestamp"),
+                "quality_score": quality_score,
+                "hazard_class": hazard_result["hazard_class"] if hazard_result else "SAFE",
+                "hazard_confidence": hazard_result.get("confidence", 0.5) if hazard_result else 0.5,
+                "shadow_percentage": shadow_result.get("shadow_percentage", 0.0) if shadow_result else 0.0,
+                "has_change": has_change,
+                "change_events": change_result["change_summary"]["total_events"] if change_result else 0,
+                "science_value": flight_science.get("science_value", quality_score),
+                "route_relevance": 0.0,
+                "task_reason": "; ".join(flight_science.get("science_reasons", [])),
+            })
+        except Exception as e:
+            logger.error(f"Pipeline [{basename}] mission_state.record_cell_observation FAILED: {e}", exc_info=True)
+
+        # ── 7. Save cost_grid.json ──
+        try:
             cost_grid = self._mosaic_grid.get_cost_grid()
             hazard_grid = self._mosaic_grid.get_hazard_grid()
             confidence_grid = self._mosaic_grid.get_confidence_grid()
@@ -461,11 +493,13 @@ class Pipeline:
             if change_result and change_result["change_summary"]["total_events"] > 0:
                 change_cells = [list(grid_cell)]
 
+            slope_grid = self._mosaic_grid.get_slope_grid()
             save_cost_grid_json(
                 cost_grid, hazard_grid,
                 image_index=self._image_index,
                 change_cells=change_cells,
                 confidence_grid=confidence_grid,
+                slope_grid=slope_grid,
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] save_cost_grid_json FAILED: {e}", exc_info=True)
@@ -482,15 +516,72 @@ class Pipeline:
     # Image index helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _get_prev_entry(self, filename: str, current_pass: int) -> dict | None:
+    def _get_prev_entry(self, filename: str, current_pass: int,
+                         mosaic_bbox: tuple = None) -> dict | None:
         """
-        Find the most recent entry for the same filename from a different (earlier) pass.
+        Find the best prior-pass image that overlaps this image's mosaic area.
+
+        Matching is spatial: we compare mosaic_bbox overlap (IoU) across ALL
+        images in the index from earlier passes.  This works regardless of
+        filename — two passes don't need to use the same names, and the orbit
+        doesn't need to repeat exactly.  Any image from a prior pass that
+        covers >=20% of the same mosaic area is a valid comparison target.
+
+        Falls back to filename matching if no mosaic_bbox is available.
         """
+        _MIN_OVERLAP_IOU = 0.20  # 20% overlap required
+
+        # ── Spatial matching (primary) ──
+        if mosaic_bbox is not None and any(v != 0 for v in mosaic_bbox):
+            best_entry = None
+            best_iou = 0.0
+
+            for fname, entries in self._image_index.items():
+                for entry in entries:
+                    if entry["pass"] >= current_pass:
+                        continue
+                    entry_bbox = entry.get("mosaic_bbox")
+                    if not entry_bbox:
+                        continue
+                    iou = self._bbox_iou_xywh(mosaic_bbox, entry_bbox)
+                    if iou >= _MIN_OVERLAP_IOU and iou > best_iou:
+                        best_iou = iou
+                        best_entry = entry
+
+            if best_entry is not None:
+                logger.info(
+                    f"ChangeDetect: spatial match for '{filename}' p{current_pass}: "
+                    f"matched '{os.path.basename(best_entry['path'])}' "
+                    f"p{best_entry['pass']} (IoU={best_iou:.2f})"
+                )
+                return best_entry
+
+        # ── Fallback: filename matching (legacy) ──
         entries = self._image_index.get(filename, [])
         prior = [e for e in entries if e["pass"] < current_pass]
         if not prior:
             return None
         return max(prior, key=lambda e: e["pass"])
+
+    @staticmethod
+    def _bbox_iou_xywh(a: tuple, b: tuple) -> float:
+        """IoU for two (x, y, w, h) bounding boxes."""
+        ax1, ay1, aw, ah = a
+        bx1, by1, bw, bh = b
+        ax2, ay2 = ax1 + aw, ay1 + ah
+        bx2, by2 = bx1 + bw, by1 + bh
+
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+        inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+        if inter == 0:
+            return 0.0
+        area_a = max(0, aw) * max(0, ah)
+        area_b = max(0, bw) * max(0, bh)
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
 
     def _record_in_index(self, filename: str, pass_number: int, image_path: str,
                          score: float, mosaic_bbox: tuple):
@@ -538,6 +629,43 @@ class Pipeline:
     def get_route_endpoints_mosaic(self) -> tuple:
         """Return (start_mosaic, end_mosaic) or (None, None)."""
         return (self._route_start_mosaic, self._route_end_mosaic)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Terrain roughness
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _run_roughness_locked(self):
+        """Run terrain roughness on the current mosaic. Must hold _lock."""
+        mosaic_path = os.path.join(config.PROCESSED_DIR, "mosaics", "mosaic_latest.png")
+        if not os.path.exists(mosaic_path):
+            return
+
+        # Get YOLO detections in mosaic space for hazard-aware roughness
+        yolo_mosaic = self._get_yolo_detections_mosaic_unlocked()
+
+        result = _analyze_roughness(
+            mosaic_path,
+            cell_size_px=config.SEG_GRID_CELL_PX,  # 20px — matches fine grid
+            yolo_detections_mosaic=yolo_mosaic,
+        )
+        if result is None:
+            return
+
+        # Apply roughness cost multipliers to the fine cost grid
+        cost_array = np.array(result["cost_grid"], dtype=np.float32)
+        self._mosaic_grid.apply_roughness_costs(cost_array)
+
+        self._latest_roughness = result
+
+    def run_roughness_analysis(self) -> dict | None:
+        """Public method — run roughness analysis (called from dashboard on demand)."""
+        with self._lock:
+            self._run_roughness_locked()
+            return getattr(self, "_latest_roughness", None)
+
+    def get_roughness_result(self) -> dict | None:
+        """Return cached roughness result if available."""
+        return getattr(self, "_latest_roughness", None)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Accessors for dashboard
@@ -613,82 +741,122 @@ class Pipeline:
     def get_yolo_detections_mosaic(self) -> list:
         """
         Project YOLO detections from image pixel space to mosaic pixel space
-        using each entry's homography matrix.
+        using each entry's homography matrix, then deduplicate overlapping
+        detections via mosaic-space NMS.
         """
-        import cv2
         with self._lock:
-            detections = []
-            entries = self._stitcher.get_entries()
-            entry_map = {e.filename: e for e in entries}
+            return self._get_yolo_detections_mosaic_unlocked()
 
-            for filename, dets in self._yolo_detections.items():
-                entry = entry_map.get(filename)
-                if entry is None or entry.homography is None:
+    def _get_yolo_detections_mosaic_unlocked(self) -> list:
+        """Internal: project YOLO detections to mosaic space. Caller must hold _lock."""
+        import cv2
+        raw_detections = []
+        entries = self._stitcher.get_entries()
+        entry_map = {e.filename: e for e in entries}
+
+        for filename, dets in self._yolo_detections.items():
+            entry = entry_map.get(filename)
+            if entry is None or entry.homography is None:
+                continue
+
+            H = entry.homography
+            for det in dets:
+                # Skip shadow and plain detections — not useful on the map
+                if det.get("class", "").lower() in ("shadow", "plain"):
                     continue
 
-                H = entry.homography
-                for det in dets:
-                    # Skip shadow detections — not useful on the map
-                    if det.get("class", "").lower() == "shadow":
-                        continue
+                bbox = det.get("bbox") or det.get("box")
+                if not bbox:
+                    continue
 
-                    bbox = det.get("bbox") or det.get("box")
-                    if not bbox:
-                        continue
+                x1, y1, x2, y2 = bbox[:4]
+                corners = np.array([
+                    [[x1, y1]], [[x2, y1]], [[x2, y2]], [[x1, y2]]
+                ], dtype=np.float64)
 
-                    # bbox is [x1, y1, x2, y2] in image space
-                    x1, y1, x2, y2 = bbox[:4]
-                    corners = np.array([
-                        [[x1, y1]], [[x2, y1]], [[x2, y2]], [[x1, y2]]
-                    ], dtype=np.float64)
+                try:
+                    mosaic_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
+                    mx1 = float(mosaic_corners[:, 0].min())
+                    my1 = float(mosaic_corners[:, 1].min())
+                    mx2 = float(mosaic_corners[:, 0].max())
+                    my2 = float(mosaic_corners[:, 1].max())
+                    mcx = (mx1 + mx2) / 2
+                    mcy = (my1 + my2) / 2
+                except Exception:
+                    continue
 
+                # Project contour polygon to mosaic space
+                contour_mosaic = None
+                raw_contour = det.get("contour")
+                if raw_contour and len(raw_contour) >= 3:
                     try:
-                        mosaic_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
-                        mx1 = float(mosaic_corners[:, 0].min())
-                        my1 = float(mosaic_corners[:, 1].min())
-                        mx2 = float(mosaic_corners[:, 0].max())
-                        my2 = float(mosaic_corners[:, 1].max())
-                        mcx = (mx1 + mx2) / 2
-                        mcy = (my1 + my2) / 2
+                        cpts = np.array(raw_contour, dtype=np.float64).reshape(-1, 1, 2)
+                        cpts_mosaic = cv2.perspectiveTransform(cpts, H).reshape(-1, 2)
+                        contour_mosaic = [[round(float(p[0]), 1), round(float(p[1]), 1)]
+                                          for p in cpts_mosaic]
                     except Exception:
+                        contour_mosaic = None
+
+                raw_detections.append({
+                    "class": det.get("class", "unknown"),
+                    "confidence": det.get("confidence", 0.0),
+                    "bbox_mosaic": [round(mx1, 1), round(my1, 1), round(mx2, 1), round(my2, 1)],
+                    "center_mosaic": [round(mcx, 1), round(mcy, 1)],
+                    "contour_mosaic": contour_mosaic,
+                    "source_image": filename,
+                    "original_class": det.get("original_class", det.get("class", "")),
+                })
+
+        return self._mosaic_nms(raw_detections, iou_threshold=0.3)
+
+    @staticmethod
+    def _mosaic_nms(detections: list, iou_threshold: float = 0.25) -> list:
+        """Non-maximum suppression in mosaic pixel space, per class."""
+        if not detections:
+            return []
+
+        # Sort by confidence descending
+        detections.sort(key=lambda d: d["confidence"], reverse=True)
+
+        # Group by class
+        by_class = {}
+        for det in detections:
+            by_class.setdefault(det["class"], []).append(det)
+
+        kept = []
+        for cls, dets in by_class.items():
+            suppressed = set()
+            for i in range(len(dets)):
+                if i in suppressed:
+                    continue
+                kept.append(dets[i])
+                bi = dets[i]["bbox_mosaic"]
+                for j in range(i + 1, len(dets)):
+                    if j in suppressed:
                         continue
+                    bj = dets[j]["bbox_mosaic"]
+                    iou = Pipeline._bbox_iou(bi, bj)
+                    if iou > iou_threshold:
+                        suppressed.add(j)
 
-                    # Project contour polygon to mosaic space
-                    contour_mosaic = None
-                    raw_contour = det.get("contour")
-                    if raw_contour and len(raw_contour) >= 3:
-                        try:
-                            cpts = np.array(raw_contour, dtype=np.float64).reshape(-1, 1, 2)
-                            cpts_mosaic = cv2.perspectiveTransform(cpts, H).reshape(-1, 2)
-                            contour_mosaic = [[round(float(p[0]), 1), round(float(p[1]), 1)]
-                                              for p in cpts_mosaic]
-                        except Exception:
-                            contour_mosaic = None
+        # Sort final list by confidence descending
+        kept.sort(key=lambda d: d["confidence"], reverse=True)
+        return kept
 
-                    detections.append({
-                        "class": det.get("class", "unknown"),
-                        "confidence": det.get("confidence", 0.0),
-                        "bbox_mosaic": [round(mx1, 1), round(my1, 1), round(mx2, 1), round(my2, 1)],
-                        "center_mosaic": [round(mcx, 1), round(mcy, 1)],
-                        "contour_mosaic": contour_mosaic,
-                        "source_image": filename,
-                        "original_class": det.get("original_class", det.get("class", "")),
-                    })
-
-            return detections
-
-    def get_analyzer_context(self) -> dict:
-        """Gather all data MissionAnalyzer needs in one lock-acquire."""
-        with self._lock:
-            return {
-                "observation_count": self._mosaic_grid.get_observation_count(),
-                "surveyed_mask": self._mosaic_grid.get_surveyed_mask(),
-                "fine_hazard_grid": self._mosaic_grid.get_fine_hazard_grid(),
-                "yolo_detections": dict(self._yolo_detections),
-                "fused_results": list(self._fused_results),
-                "shadow_percentages": dict(self._shadow_percentages),
-                "image_metadata": list(self._image_metadata),
-            }
+    @staticmethod
+    def _bbox_iou(a, b) -> float:
+        """Compute IoU between two [x1, y1, x2, y2] bboxes."""
+        ix1 = max(a[0], b[0])
+        iy1 = max(a[1], b[1])
+        ix2 = min(a[2], b[2])
+        iy2 = min(a[3], b[3])
+        inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+        if inter == 0:
+            return 0.0
+        area_a = max(0, a[2] - a[0]) * max(0, a[3] - a[1])
+        area_b = max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
 
     def recommend_landing_sites(self) -> dict:
         """Run the landing recommender on current grid state."""
@@ -704,9 +872,16 @@ class Pipeline:
             cr = self._mosaic_grid.rows
             cc = self._mosaic_grid.cols
 
+        # Get roughness grid if available
+        roughness_np = None
+        roughness_result = getattr(self, "_latest_roughness", None)
+        if roughness_result is not None:
+            roughness_np = np.array(roughness_result["grid"], dtype=np.int8)
+
         return self._landing_recommender.recommend(
             fine_cost, fine_hazard, obs_count, conf_grid,
             surv_mask, slope, fr, fc, cr, cc,
+            roughness_grid=roughness_np,
         )
 
     def get_mission_summary(self) -> dict:

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from flask import Flask, Response, jsonify, render_template, request, send_file
 
 import config
+from llm.interface import generate_operator_briefing, query_mission
 from receiver import telemetry_parser
 from receiver.downlink_state import get_state as get_downlink_state
 from uplink.commander import Commander
@@ -290,6 +291,140 @@ def api_segmentation_map():
     return ("No segmentation map yet", 204)
 
 
+@app.route("/api/segmentation_contours")
+def api_segmentation_contours():
+    """Return contour polygons for hazard regions in mosaic pixel coords.
+
+    Uses two sources:
+    1. Fine segmentation grid (pixel-level, from YOLO + segmenter)
+    2. Coarse hazard grid (cell-level, from classical CV hazard classifier)
+
+    This ensures contours appear even when YOLO doesn't fire.
+    """
+    if _pipeline is None:
+        return jsonify({"contours": []})
+
+    import cv2
+    import numpy as np
+
+    contour_features = []
+    cell_px = config.MOSAIC_GRID_CELL_PX  # coarse cell size (80)
+
+    # Source 1: Fine segmentation grid (if available)
+    if config.SEG_ENABLED:
+        from processing.pixel_segmenter import LABEL_NAMES, CRATER, BOULDER, SHADOW
+        fine_hazard = _pipeline.get_fine_hazard_grid()
+        if fine_hazard is not None and fine_hazard.size > 4:
+            fine_cell_px = config.SEG_GRID_CELL_PX
+            for label_val in (CRATER, BOULDER, SHADOW):
+                mask = (fine_hazard == label_val).astype(np.uint8)
+                if mask.sum() == 0:
+                    continue
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for cnt in contours:
+                    area = cv2.contourArea(cnt)
+                    if area < 4:
+                        continue
+                    epsilon = 0.02 * cv2.arcLength(cnt, closed=True)
+                    approx = cv2.approxPolyDP(cnt, epsilon, closed=True)
+                    if len(approx) < 3:
+                        continue
+                    pts = approx.reshape(-1, 2).astype(float)
+                    pts[:, 0] *= fine_cell_px
+                    pts[:, 1] *= fine_cell_px
+                    contour_features.append({
+                        "class": LABEL_NAMES.get(label_val, "unknown"),
+                        "label": int(label_val),
+                        "area_cells": int(area),
+                        "source": "segmentation",
+                        "polygon": [[round(p[0], 1), round(p[1], 1)] for p in pts],
+                    })
+
+    # Source 2: Coarse hazard grid from classical CV
+    hazard_grid = _pipeline.get_hazard_grid()
+    cost_grid = _pipeline.get_cost_grid()
+    if hazard_grid and len(hazard_grid) > 0:
+        rows = len(hazard_grid)
+        cols = len(hazard_grid[0]) if rows > 0 else 0
+
+        # Build masks for each hazard class
+        class_map = {"HAZARD": "CRATER", "SHADOW": "SHADOW", "IMPASSABLE": "BOULDER", "CRATER": "CRATER"}
+        for src_class, display_class in class_map.items():
+            mask = np.zeros((rows, cols), dtype=np.uint8)
+            for r in range(rows):
+                for c in range(cols):
+                    if r < len(hazard_grid) and c < len(hazard_grid[r]):
+                        if hazard_grid[r][c] == src_class:
+                            mask[r, c] = 1
+
+            if mask.sum() == 0:
+                continue
+
+            # Morphological close to merge adjacent cells
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area < 1:
+                    continue
+                epsilon = 0.01 * cv2.arcLength(cnt, closed=True)
+                approx = cv2.approxPolyDP(cnt, epsilon, closed=True)
+                if len(approx) < 3:
+                    continue
+                pts = approx.reshape(-1, 2).astype(float)
+                pts[:, 0] *= cell_px
+                pts[:, 1] *= cell_px
+                contour_features.append({
+                    "class": display_class,
+                    "label": 0,
+                    "area_cells": int(area),
+                    "source": "classical_cv",
+                    "polygon": [[round(p[0], 1), round(p[1], 1)] for p in pts],
+                })
+
+    # Also add contours for MODERATE cells with high cost (>= 10) — these have
+    # significant terrain features worth outlining
+    if hazard_grid and cost_grid is not None:
+        rows, cols = cost_grid.shape
+        high_mod_mask = np.zeros((rows, cols), dtype=np.uint8)
+        for r in range(rows):
+            for c in range(cols):
+                cost = int(cost_grid[r, c])
+                hclass = hazard_grid[r][c] if r < len(hazard_grid) and c < len(hazard_grid[r]) else "SAFE"
+                if hclass == "MODERATE" and cost >= 10:
+                    high_mod_mask[r, c] = 1
+
+        if high_mod_mask.sum() > 0:
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            high_mod_mask = cv2.morphologyEx(high_mod_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+            contours, _ = cv2.findContours(high_mod_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area < 3:
+                    continue
+                epsilon = 0.02 * cv2.arcLength(cnt, closed=True)
+                approx = cv2.approxPolyDP(cnt, epsilon, closed=True)
+                if len(approx) < 3:
+                    continue
+                pts = approx.reshape(-1, 2).astype(float)
+                pts[:, 0] *= cell_px
+                pts[:, 1] *= cell_px
+                contour_features.append({
+                    "class": "ROUGH_TERRAIN",
+                    "label": 0,
+                    "area_cells": int(area),
+                    "source": "classical_cv",
+                    "polygon": [[round(p[0], 1), round(p[1], 1)] for p in pts],
+                })
+
+    contour_features.sort(key=lambda c: c["area_cells"], reverse=True)
+    return jsonify({"contours": contour_features})
+
+
 @app.route("/api/fine_grid")
 def api_fine_grid():
     """Return fine grid data for pixel-level route planning."""
@@ -369,6 +504,54 @@ def api_yolo_detections_mosaic():
     return jsonify({"detections": detections})
 
 
+@app.route("/api/roughness_grid")
+def api_roughness_grid():
+    """Return terrain roughness grid analysis (classical CV texture metrics).
+    Uses pipeline's cached result or generates on demand with YOLO awareness."""
+    if _pipeline is not None:
+        # Try cached result first
+        result = _pipeline.get_roughness_result()
+        if result is None:
+            result = _pipeline.run_roughness_analysis()
+        if result is not None:
+            out = dict(result)
+            out.pop("overlay_path", None)
+            return jsonify(out)
+
+    # Fallback: run standalone (no YOLO data)
+    from processing.terrain_roughness import analyze_roughness
+    mosaic_path = os.path.join(config.PROCESSED_DIR, "mosaics", "mosaic_latest.png")
+    if not os.path.exists(mosaic_path):
+        return jsonify({"error": "No mosaic yet"}), 204
+
+    result = analyze_roughness(mosaic_path, cell_size_px=20)
+    if result is None:
+        return jsonify({"error": "Analysis failed"}), 500
+
+    result.pop("overlay_path", None)
+    return jsonify(result)
+
+
+@app.route("/api/roughness_overlay")
+def api_roughness_overlay():
+    """Return terrain roughness overlay as a transparent PNG."""
+    overlay_path = os.path.join(config.PROCESSED_DIR, "roughness", "roughness_overlay.png")
+    if not os.path.exists(overlay_path):
+        # Generate on demand via pipeline (YOLO-aware)
+        if _pipeline is not None:
+            _pipeline.run_roughness_analysis()
+        else:
+            from processing.terrain_roughness import analyze_roughness
+            mosaic_path = os.path.join(config.PROCESSED_DIR, "mosaics", "mosaic_latest.png")
+            if not os.path.exists(mosaic_path):
+                return ("No mosaic yet", 204)
+            analyze_roughness(mosaic_path, cell_size_px=20)
+
+    if not os.path.exists(overlay_path):
+        return ("Analysis failed", 500)
+    return send_file(os.path.abspath(overlay_path), mimetype="image/png")
+
+
 @app.route("/api/slope_grid")
 def api_slope_grid():
     """Return slope grid (degrees per cell)."""
@@ -432,7 +615,7 @@ def api_downlink_status():
 def api_downlink_history():
     """Return recent transfer history."""
     dl = get_downlink_state()
-    return jsonify({"transfers": dl.get_history()})
+    return jsonify({"history": dl.get_history()})
 
 
 @app.route("/api/image/<path:filename>")
@@ -500,8 +683,26 @@ def api_plan_routes():
     if _pipeline is None:
         return jsonify({"error": "Pipeline not ready"}), 503
 
-    cost_grid = _pipeline.get_effective_cost_grid() if config.UNCERTAINTY_ENABLED else _pipeline.get_cost_grid()
-    hazard_grid = _pipeline.get_hazard_grid()
+    # Apply roughness costs before planning so routes account for terrain texture
+    try:
+        _pipeline.run_roughness_analysis()
+    except Exception:
+        pass
+
+    # Use fine grid (20px cells with roughness + segmentation) when available
+    if config.SEG_ENABLED:
+        cost_grid = _pipeline.get_fine_cost_grid()
+        fine_hg = _pipeline.get_fine_hazard_grid()
+        _label_to_hazard = {0: "SAFE", 1: "SAFE", 2: "SAFE",
+                            3: "SHADOW", 4: "HAZARD", 5: "IMPASSABLE"}
+        hazard_grid = [
+            [_label_to_hazard.get(int(fine_hg[r, c]), "SAFE")
+             for c in range(fine_hg.shape[1])]
+            for r in range(fine_hg.shape[0])
+        ]
+    else:
+        cost_grid = _pipeline.get_effective_cost_grid() if config.UNCERTAINTY_ENABLED else _pipeline.get_cost_grid()
+        hazard_grid = _pipeline.get_hazard_grid()
     rows, cols = cost_grid.shape
     hazard_map_path = _pipeline.get_latest_hazard_map_path() if hasattr(_pipeline, 'get_latest_hazard_map_path') else None
 
@@ -509,11 +710,13 @@ def api_plan_routes():
     end_mosaic = body.get("end_mosaic")
 
     if start_mosaic and end_mosaic:
-        # Convert mosaic pixel coords to grid coords
-        from processing.mosaic_grid import MosaicGrid
         grid = _pipeline._mosaic_grid
-        start = grid.mosaic_px_to_grid(start_mosaic[0], start_mosaic[1])
-        end = grid.mosaic_px_to_grid(end_mosaic[0], end_mosaic[1])
+        if config.SEG_ENABLED:
+            start = grid.mosaic_px_to_fine_grid(start_mosaic[0], start_mosaic[1])
+            end = grid.mosaic_px_to_fine_grid(end_mosaic[0], end_mosaic[1])
+        else:
+            start = grid.mosaic_px_to_grid(start_mosaic[0], start_mosaic[1])
+            end = grid.mosaic_px_to_grid(end_mosaic[0], end_mosaic[1])
         # Store mosaic endpoints in pipeline
         _pipeline.set_route_endpoints_mosaic(start_mosaic, end_mosaic)
     else:
@@ -529,6 +732,17 @@ def api_plan_routes():
     for label, pt in [("start", start), ("end", end)]:
         if len(pt) != 2 or not (0 <= pt[0] < rows and 0 <= pt[1] < cols):
             return jsonify({"error": f"Invalid {label}: {pt} (grid is {rows}x{cols})"}), 400
+
+    # Reject landing/target on craters or impassable terrain
+    blocked_classes = {"CRATER", "IMPASSABLE"}
+    if hazard_grid is not None:
+        for label, pt in [("Landing", start), ("Target", end)]:
+            r, c = int(pt[0]), int(pt[1])
+            cell_class = hazard_grid[r][c] if 0 <= r < rows and 0 <= c < cols else None
+            if cell_class in blocked_classes:
+                return jsonify({
+                    "error": f"{label} point is on a {cell_class} cell ({r},{c}) — pick a safer location"
+                }), 400
 
     try:
         routes = _pipeline._route_planner.plan_multiple_routes(
@@ -642,6 +856,60 @@ def api_recommend_landing():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/recommend_target")
+def api_recommend_target():
+    """Pick a target point: farthest safe, surveyed cell from the given landing point."""
+    if _pipeline is None:
+        return jsonify({"error": "Pipeline not ready"}), 503
+
+    try:
+        lx = request.args.get("lx", type=float)
+        ly = request.args.get("ly", type=float)
+        if lx is None or ly is None:
+            return jsonify({"error": "Provide lx,ly (mosaic px) of landing point"}), 400
+
+        mg = _pipeline._mosaic_grid
+        cost_grid = mg.get_cost_grid()
+        hazard_grid = mg.get_hazard_grid()
+        surveyed = mg.get_surveyed_mask()
+        rows, cols = cost_grid.shape
+        cell_px = config.MOSAIC_GRID_CELL_PX
+
+        # Landing cell
+        lr = int(ly / cell_px)
+        lc = int(lx / cell_px)
+
+        blocked = {"CRATER", "IMPASSABLE"}
+        best_dist = -1
+        best_r, best_c = rows - 1, cols - 1
+
+        for r in range(rows):
+            for c in range(cols):
+                if not surveyed[r, c]:
+                    continue
+                hc = hazard_grid[r][c] if r < len(hazard_grid) and c < len(hazard_grid[r]) else "SAFE"
+                if hc in blocked:
+                    continue
+                if cost_grid[r, c] >= config.COST_CRATER:
+                    continue
+                d = (r - lr) ** 2 + (c - lc) ** 2
+                if d > best_dist:
+                    best_dist = d
+                    best_r, best_c = r, c
+
+        mx = best_c * cell_px + cell_px / 2
+        my = best_r * cell_px + cell_px / 2
+
+        return jsonify({
+            "target_mosaic_px": [round(mx, 1), round(my, 1)],
+            "target_grid_rc": [best_r, best_c],
+            "distance_cells": round(best_dist ** 0.5, 1) if best_dist > 0 else 0,
+        })
+    except Exception as e:
+        logger.error(f"recommend_target failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/mission_summary")
 def api_mission_summary():
     """Return aggregated mission summary with landing recommendation."""
@@ -653,88 +921,6 @@ def api_mission_summary():
     except Exception as e:
         logger.error(f"mission_summary failed: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# API — AI Advisor
-# ─────────────────────────────────────────────────────────────────────────────
-
-_orchestrator = None
-
-
-def _get_orchestrator():
-    global _orchestrator
-    if _orchestrator is None:
-        from agents.orchestrator import MissionOrchestrator
-        _orchestrator = MissionOrchestrator()
-    return _orchestrator
-
-
-@app.route("/api/advisor/run", methods=["POST"])
-def api_advisor_run():
-    """Run the full AI advisor pipeline: analyze → specialists → briefing."""
-    if _pipeline is None:
-        return jsonify({"error": "Pipeline not ready"}), 503
-
-    try:
-        telemetry = {}
-        try:
-            telemetry = telemetry_parser.get_latest_telemetry()
-        except Exception:
-            pass
-
-        orchestrator = _get_orchestrator()
-        result = orchestrator.run_full_analysis(
-            _pipeline, _mission_state, telemetry
-        )
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"advisor/run failed: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/advisor/decisions")
-def api_advisor_decisions():
-    """Return the current decision log from mission_state."""
-    if _mission_state is None:
-        return jsonify({"decisions": []})
-    return jsonify({"decisions": _mission_state.get_decision_log()})
-
-
-@app.route("/api/advisor/approve", methods=["POST"])
-def api_advisor_approve():
-    """Resolve a pending decision. Body: {id, action: approve|override|defer, note?}."""
-    if _mission_state is None:
-        return jsonify({"success": False, "error": "Mission state not ready"}), 503
-
-    try:
-        body = request.get_json(force=True) or {}
-    except Exception:
-        return jsonify({"success": False, "error": "Invalid JSON"}), 400
-
-    decision_id = body.get("id", "")
-    action = body.get("action", "")
-    note = body.get("note", "")
-
-    if action not in ("APPROVED", "OVERRIDDEN", "DEFERRED"):
-        return jsonify({"success": False, "error": "action must be APPROVED, OVERRIDDEN, or DEFERRED"}), 400
-
-    success = _mission_state.resolve_decision(decision_id, action, note)
-    if success:
-        _mission_state.save()
-    return jsonify({"success": success, "id": decision_id, "action": action})
-
-
-@app.route("/api/advisor/status")
-def api_advisor_status():
-    """Lightweight poll: return latest briefing + pending decision count."""
-    orchestrator = _get_orchestrator()
-    briefing = orchestrator.get_last_briefing()
-    pending = _mission_state.get_pending_decisions() if _mission_state else []
-    return jsonify({
-        "briefing": briefing,
-        "pending_count": len(pending),
-    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -771,6 +957,16 @@ def api_command():
         elif cmd == "set_cell":
             success = _commander.set_cell(int(body["row"]), int(body["col"]))
 
+        elif cmd == "observe_cell":
+            success = _commander.observe_cell(
+                int(body["row"]), int(body["col"]), str(body.get("reason", ""))
+            )
+
+        elif cmd == "revisit_cell":
+            success = _commander.revisit_cell(
+                int(body["row"]), int(body["col"]), str(body.get("reason", ""))
+            )
+
         elif cmd == "adjust_exposure":
             success = _commander.adjust_exposure(int(body["exposure_us"]))
 
@@ -785,6 +981,12 @@ def api_command():
 
         elif cmd == "retry_downlink":
             success = _commander.retry_downlink()
+
+        elif cmd == "start_pass":
+            success = _commander.start_pass()
+
+        elif cmd == "end_pass":
+            success = _commander.end_pass()
 
         else:
             return jsonify({"success": False, "error": f"Unknown cmd '{cmd}'"}), 400
@@ -900,7 +1102,7 @@ def api_pi_log():
 
 @app.route("/api/llm_query", methods=["POST"])
 def api_llm_query():
-    """Optional: send a question to local ollama with mission_state as context."""
+    """Optional: ask a question about current mission_state via local Ollama."""
     try:
         body = request.get_json(force=True)
         question = body.get("question", "").strip()
@@ -911,8 +1113,29 @@ def api_llm_query():
         return jsonify({"response": "No question provided"}), 400
 
     state = _mission_state.get_snapshot() if _mission_state else {}
-    response_text = _query_ollama(question, state)
+    response_text = query_mission(question, state)
     return jsonify({"response": response_text})
+
+
+@app.route("/api/mission_briefing")
+def api_mission_briefing():
+    state = _mission_state.get_snapshot() if _mission_state else {}
+    deterministic = state.get("mission_briefing", {})
+    include_llm = request.args.get("llm", "").lower() in {"1", "true", "yes"}
+    out = {"deterministic": deterministic}
+    if include_llm:
+        out["llm"] = generate_operator_briefing(state, deterministic)
+    return jsonify(out)
+
+
+@app.route("/api/task_queue")
+def api_task_queue():
+    state = _mission_state.get_snapshot() if _mission_state else {}
+    return jsonify({
+        "tasks": state.get("task_queue", []),
+        "science_feed": state.get("science_feed", []),
+        "mission_metrics": state.get("mission_metrics", {}),
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1469,40 +1692,4 @@ def _read_log_tail(n: int) -> list[str]:
 
 
 def _query_ollama(question: str, mission_state: dict) -> str:
-    """
-    Send question + mission_state JSON to local ollama (Llama 3.2).
-    Returns the response string, or an error message if ollama isn't running.
-    """
-    try:
-        import urllib.request
-        import urllib.error
-
-        state_json = json.dumps(mission_state, indent=2)
-        system_prompt = (
-            "You are a mission analyst for the MuraltZ CubeSat. "
-            "The following is the current mission state JSON containing real data. "
-            "Answer the operator's question based only on this data. "
-            "Do not invent numbers or events not present in the JSON.\n\n"
-            f"MISSION STATE:\n{state_json}"
-        )
-
-        payload = json.dumps({
-            "model": config.LLM_MODEL,
-            "prompt": question,
-            "system": system_prompt,
-            "stream": False,
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "http://localhost:11434/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result.get("response", "No response from model")
-
-    except Exception as e:
-        logger.warning(f"LLM query failed: {e}")
-        return f"LLM unavailable: {e}"
+    return query_mission(question, mission_state)

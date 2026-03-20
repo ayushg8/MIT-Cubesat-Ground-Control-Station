@@ -11,6 +11,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 /* TAB_REWRITE_MARKER */
+@keyframes spin { to { transform: rotate(360deg); } }
 body {
   background: #0a0e17; color: #e0e0e0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -310,18 +311,31 @@ input.active-input { border-color: var(--cyan); }
 .change-cell-tab.active { border-color: var(--red); color: var(--red); background: rgba(255,68,68,0.08); }
 .change-event-card {
   background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red);
-  padding: 8px 12px; font-family: var(--mono); font-size: 13px; color: var(--bright);
-  display: flex; align-items: center; gap: 12px; cursor: pointer; margin-top: 4px;
+  padding: 8px 12px; font-family: var(--mono); font-size: 12px; color: var(--bright);
+  display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 4px;
 }
+.change-event-card.evt-new { border-left-color: #00cc66; }
+.change-event-card.evt-disappeared { border-left-color: #ff4444; }
+.change-event-card.evt-moved { border-left-color: #ffaa00; }
+.change-event-card.evt-reclassified { border-left-color: #4488ff; }
 .change-event-card:hover { border-color: var(--red); }
 .change-event-card.active-event { background: #1a1020; }
-.change-event-card .ce-id { color: var(--red); font-weight: 700; min-width: 20px; }
-.change-event-card .ce-detail { color: var(--dim); }
-.change-event-card .ce-conf { margin-left: auto; }
+.change-event-card .ce-id { font-weight: 700; min-width: 20px; }
+.change-event-card .ce-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px; border-radius: 2px; }
+.change-event-card .ce-type.t-new { background: rgba(0,204,102,0.15); color: #00cc66; }
+.change-event-card .ce-type.t-disappeared { background: rgba(255,68,68,0.15); color: #ff4444; }
+.change-event-card .ce-type.t-moved { background: rgba(255,170,0,0.15); color: #ffaa00; }
+.change-event-card .ce-type.t-reclassified { background: rgba(68,136,255,0.15); color: #4488ff; }
+.change-event-card .ce-type.t-pixel { background: rgba(150,150,150,0.15); color: #999; }
+.change-event-card .ce-detail { color: var(--dim); flex: 1; }
+.change-event-card .ce-conf { margin-left: auto; font-size: 11px; }
+.change-count-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid #1a2030; }
+.change-count-class { min-width: 80px; color: var(--bright); }
+.change-count-bar { height: 12px; border-radius: 2px; min-width: 2px; }
+.change-count-num { min-width: 40px; text-align: right; }
 .change-warning { background: #332200; border: 1px solid var(--amber); padding: 6px 10px; margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--amber); }
 
 /* ══ COVERAGE GRID ══ */
-#coverage-canvas { display: block; width: 100%; background: var(--bg); }
 .cov-tl-seg {
   display: flex; align-items: center; justify-content: center;
   font-family: var(--mono); font-size: 8px; color: #6b7280; text-transform: uppercase;
@@ -336,20 +350,6 @@ input.active-input { border-color: var(--cyan); }
   display: flex; align-items: center; justify-content: center;
   color: var(--dim); font-size: 11px; font-family: var(--mono);
 }
-
-/* ── Shadow / Quad ── */
-.shadow-summary {
-  font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 8px;
-  background: var(--panel); border: 1px solid var(--border);
-}
-.shadow-summary b { color: var(--bright); }
-.quad-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
-.quad-table th {
-  text-align: left; padding: 4px 6px; background: #1a2030; color: var(--dim);
-  font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em;
-}
-.quad-table td { padding: 4px 6px; border-bottom: 1px solid #1a2030; }
-.quad-table tr:nth-child(even) td { background: #0f1520; }
 
 /* ── Telemetry ── */
 .telem-group-title { font-family: var(--mono); font-size: 11px; color: var(--dim); text-transform: uppercase; margin-bottom: 4px; }
@@ -379,13 +379,18 @@ input.active-input { border-color: var(--cyan); }
   padding: 6px 10px; margin-bottom: 6px; font-family: var(--mono); font-size: 12px; color: var(--amber);
 }
 
-/* ── LLM bar ── */
+/* ── LLM Q&A (Ollama, Log tab) ── */
 #llm-bar {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   background: var(--panel); border: 1px solid var(--border); margin-top: 8px;
 }
 #llm-input { flex: 1; width: auto !important; padding: 6px 8px !important; font-size: 11px !important; }
-#llm-response { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; padding: 4px 8px; min-height: 18px; }
+#llm-response { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; padding: 4px 8px; min-height: 18px; white-space: pre-wrap; }
+.briefing-box, .task-box { border:1px solid rgba(0,204,255,0.18); background:rgba(4,14,24,0.85); padding:8px; margin-bottom:8px; }
+.briefing-headline { color: var(--bright); font-size: 12px; line-height: 1.45; margin-bottom: 6px; }
+.briefing-list, .task-list, .science-feed { margin:0; padding-left:16px; color:var(--dim); font-size:11px; }
+.task-list li, .science-feed li { margin-bottom: 6px; }
+.task-btn { margin-left: 6px; font-size: 10px; }
 
 /* ══ LIVE DOWNLINK ══ */
 .dl-live-wrap {
@@ -455,15 +460,17 @@ input.active-input { border-color: var(--cyan); }
   display: flex; align-items: center; gap: 6px; padding: 4px 0;
 }
 
-.dl-history { margin-top: 6px; }
+.dl-history { margin-top: 6px; max-height: 300px; overflow-y: auto; }
 .dl-history-item {
-  display: flex; align-items: center; gap: 8px; padding: 2px 0;
-  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px;
+  align-items: center; padding: 5px 4px;
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
   border-bottom: 1px solid #1a2030;
 }
-.dl-history-item .dl-h-name { color: var(--bright); min-width: 120px; }
-.dl-history-item .dl-h-ok { color: var(--green); }
-.dl-history-item .dl-h-fail { color: var(--red); }
+.dl-history-item:hover { background: rgba(255,255,255,0.03); }
+.dl-history-item .dl-h-name { color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.dl-history-item .dl-h-ok { color: var(--green); font-weight: 600; }
+.dl-history-item .dl-h-fail { color: var(--red); font-weight: 600; }
 
 /* ── Misc ── */
 .note { font-family: var(--mono); font-size: 11px; color: var(--dim); }
@@ -508,7 +515,7 @@ input.active-input { border-color: var(--cyan); }
   </div>
 
   <div class="tb-controls">
-    <button id="mc-btn-start" disabled onclick="mcStartPass(this)">&#9654; START PASS</button>
+    <button id="mc-btn-start" onclick="mcStartPass(this)">&#9654; START PASS</button>
     <button id="mc-btn-end" disabled onclick="mcEndPass(this)">&#9632; END PASS</button>
     <div class="tb-div"></div>
     <button id="mc-btn-discover" class="active-start" onclick="mcDiscover()">FIND</button>
@@ -539,9 +546,7 @@ input.active-input { border-color: var(--cyan); }
 
 <!-- ══ TAB BAR ══ -->
 <div id="tabbar">
-  <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
-  <button class="tab-btn" onclick="switchTab('terrain',this)">Terrain</button>
-  <button class="tab-btn" onclick="switchTab('detection',this)">Detection</button>
+  <button class="tab-btn active" onclick="switchTab('overview',this)">Mission Hub</button>
   <button class="tab-btn" onclick="switchTab('changes',this)">Changes</button>
   <button class="tab-btn" onclick="switchTab('telemetry',this)">Telemetry</button>
   <button class="tab-btn" onclick="switchTab('log',this)">Log</button>
@@ -550,17 +555,59 @@ input.active-input { border-color: var(--cyan); }
 <!-- ══ CONTENT ══ -->
 <div id="content">
 
-<!-- ═══ OVERVIEW TAB ═══ -->
+<!-- ═══ MISSION HUB ═══ -->
 <div class="tab-page active" id="tab-overview">
-  <div class="grid-4" style="margin-bottom:12px;">
-    <div class="stat-card"><div class="stat-num" id="ov-images" style="color:var(--green);">--</div><div class="stat-label">Images Received</div></div>
-    <div class="stat-card"><div class="stat-num" id="ov-coverage" style="color:var(--cyan);">--</div><div class="stat-label">Coverage</div></div>
-    <div class="stat-card"><div class="stat-num" id="ov-changes" style="color:var(--amber);">--</div><div class="stat-label">Change Events</div></div>
-    <div class="stat-card"><div class="stat-num" id="ov-route" style="color:var(--green);">--</div><div class="stat-label">Route Length</div></div>
-  </div>
-  <div class="grid-2">
+
+  <!-- Main content: Mosaic (wide) + sidebar (status + downlink) -->
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:12px;">
+    <!-- Left: Mosaic Viewer -->
     <div>
-      <!-- Mission Status -->
+      <div class="pnl" id="mosaic-section">
+        <div class="pnl-hdr">
+          <span class="pnl-title">Mosaic Terrain Viewer</span>
+          <span class="pnl-badge" id="mosaic-count-badge" style="border-color:var(--dim);color:var(--dim);">0 IMAGES</span>
+          <span class="pnl-badge" id="route-status-badge" style="border-color:var(--dim);color:var(--dim);">NO ROUTES</span>
+        </div>
+        <div class="pnl-body">
+          <div id="route-change-warning"></div>
+          <div class="mosaic-controls">
+            <button id="btn-set-landing" onclick="mosaicSetMode('landing')" title="Click mosaic to set landing point">SET LANDING</button>
+            <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
+            <button id="btn-auto-landing" onclick="autoRecommendLanding()" style="background:var(--cyan);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-RECOMMEND LANDING</button>
+            <button id="btn-auto-target" onclick="autoRecommendTarget()" style="background:var(--red);color:#fff;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-TARGET</button>
+            <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
+          </div>
+          <div id="mosaic-map"></div>
+          <div class="heatmap-legend" style="margin-top:4px;">
+            <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;opacity:0.6;"></span>Safe</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#ffaa00;opacity:0.6;"></span>Moderate</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;opacity:0.6;"></span>Crater</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid #ff4444;"></span>Impassable</div>
+            <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurveyed</div>
+          </div>
+          <div class="note" style="margin-top:2px;">Click: <span style="color:var(--green);">SET LANDING</span> then click mosaic for L, <span style="color:var(--red);">SET TARGET</span> then click for T</div>
+          <div id="hazard-sidebar"></div>
+        </div>
+      </div>
+
+      <!-- Route Comparison + Constraint Planner -->
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Route Comparison</span></div>
+        <div class="pnl-body">
+          <div class="route-cards" id="route-cards"></div>
+          <div id="constrained-result"></div>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-hdr"><span class="pnl-title">Selected Route Stats</span></div>
+        <div class="pnl-body">
+          <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--dim);">No route data</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right sidebar: Mission Status + Downlink -->
+    <div>
       <div class="pnl">
         <div class="pnl-hdr">
           <span class="pnl-title">Mission Status</span>
@@ -572,12 +619,14 @@ input.active-input { border-color: var(--cyan); }
           <div class="kv"><span class="k">Images RX</span><span class="v" id="s-images">--</span></div>
           <div class="kv"><span class="k">Corrupted</span><span class="v" id="s-corrupt">0</span></div>
           <div class="kv"><span class="k">Coverage</span><span class="v" id="s-coverage">--</span></div>
+          <div class="kv"><span class="k">Craters</span><span class="v" id="s-craters" style="color:var(--red);">--</span></div>
+          <div class="kv"><span class="k">Boulders</span><span class="v" id="s-boulders" style="color:var(--amber);">--</span></div>
           <div class="kv"><span class="k">Route</span><span class="v" id="s-route">--</span></div>
           <div class="kv"><span class="k">Changes</span><span class="v" id="s-changes">--</span></div>
           <div class="kv" style="border:none;"><span class="k">Updated</span><span class="v" id="s-updated" style="font-size:11px;">--</span></div>
         </div>
       </div>
-      <!-- Downlink (Live SSE) -->
+
       <div class="pnl">
         <div class="pnl-hdr">
           <span class="pnl-title">Downlink</span>
@@ -586,7 +635,6 @@ input.active-input { border-color: var(--cyan); }
           <span class="pnl-badge" id="dl-rate-badge">-- B/s</span>
         </div>
         <div class="pnl-body">
-          <!-- Overall session progress (all images in this downlink window) -->
           <div id="dl-session-wrap" style="display:none; margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px;">
               <span style="color:var(--bright);font-weight:600;" id="dl-sess-label">Overall</span>
@@ -602,7 +650,6 @@ input.active-input { border-color: var(--cyan); }
               <div><div style="color:var(--dim);">Elapsed</div><div id="dl-sess-elapsed" style="color:var(--bright);">--</div></div>
             </div>
           </div>
-          <!-- Active transfer info (hidden when idle) — current image -->
           <div id="dl-active-wrap" class="dl-live-wrap" style="display:none;">
             <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
               <span id="dl-filename" style="color:var(--bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">--</span>
@@ -618,202 +665,39 @@ input.active-input { border-color: var(--cyan); }
               <div><div style="color:var(--dim);">Progress</div><div id="dl-pct" style="color:var(--bright);">0%</div><div style="color:var(--dim);font-size:10px;">&nbsp;</div></div>
             </div>
           </div>
-          <!-- Idle message (shown when no transfer active) -->
           <div id="dl-idle-wrap" class="dl-idle-text">
             <span class="dl-status-dot"></span> Waiting for CubeSat downlink&hellip;
           </div>
-          <!-- Transfer history -->
           <div class="dl-history" id="dl-history"></div>
         </div>
       </div>
-    </div>
-    <div>
-      <!-- Latest Image -->
+
       <div class="pnl">
-        <div class="pnl-hdr"><span class="pnl-title">Latest Image</span></div>
-        <div class="pnl-body" style="padding:4px;">
-          <img id="img-latest" class="map-img" src="" alt="">
-          <div id="img-latest-ph" class="img-placeholder" style="min-height:80px;">NO DATA</div>
-        </div>
-      </div>
-      <!-- Coverage Grid -->
-      <div class="pnl">
-        <div class="pnl-hdr">
-          <span class="pnl-title">Coverage Grid</span>
-          <span class="pnl-badge" id="coverage-pct-badge">0%</span>
-        </div>
-        <div class="pnl-body">
-          <canvas id="coverage-canvas" width="340" height="340"></canvas>
-          <div id="cov-timeline" style="margin-top:6px;position:relative;height:20px;">
-            <div style="display:flex;height:14px;overflow:hidden;background:#1e2233;">
-              <div id="cov-tl-p1" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 1</span></div>
-              <div id="cov-tl-p2" class="cov-tl-seg" style="flex:1;background:#003322;border-right:1px solid var(--border);"><span>Pass 2</span></div>
-              <div id="cov-tl-p3" class="cov-tl-seg" style="flex:1;background:#003322;"><span>Pass 3</span></div>
+        <div class="pnl-hdr"><span class="pnl-title">Mission Q&amp;A</span></div>
+        <div class="pnl-body" style="padding:8px;">
+          <div class="briefing-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Operator Briefing</span>
+              <button type="button" onclick="loadMissionIntel(true)">LLAMA BRIEF</button>
             </div>
-            <div id="cov-tl-playhead" style="position:absolute;top:2px;left:0;width:8px;height:8px;border-radius:0;background:var(--cyan);box-shadow:0 0 4px var(--cyan);pointer-events:none;"></div>
+            <div id="briefing-headline" class="briefing-headline">No mission briefing yet.</div>
+            <ul id="briefing-bullets" class="briefing-list"></ul>
+            <div id="briefing-llm" style="white-space:pre-wrap;color:var(--dim);font-size:11px;margin-top:6px;"></div>
           </div>
-          <button style="width:100%;margin-top:4px;font-size:11px;" onclick="startCoverageAnim()">REPLAY</button>
-          <div class="note" style="margin-top:3px;">
-            <span class="dot dot-green"></span> Surveyed &nbsp;
-            <span class="dot dot-amber"></span> Change &nbsp;
-            <span class="dot dot-gray"></span> Unsurveyed
+          <div class="task-box">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Priority Task Queue</div>
+            <ul id="task-queue" class="task-list"></ul>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ TERRAIN TAB ═══ -->
-<div class="tab-page" id="tab-terrain">
-<div style="display:flex;gap:12px;align-items:flex-start;">
-<div id="terrain-main" style="flex:3;min-width:0;">
-  <div class="pnl" id="mosaic-section">
-    <div class="pnl-hdr">
-      <span class="pnl-title">Mosaic Terrain Viewer</span>
-      <span class="pnl-badge" id="mosaic-count-badge" style="border-color:var(--dim);color:var(--dim);">0 IMAGES</span>
-      <span class="pnl-badge" id="route-status-badge" style="border-color:var(--dim);color:var(--dim);">NO ROUTES</span>
-    </div>
-    <div class="pnl-body">
-      <div id="route-change-warning"></div>
-      <div class="mosaic-controls">
-        <button id="btn-set-landing" onclick="mosaicSetMode('landing')" title="Click mosaic to set landing point">SET LANDING</button>
-        <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
-        <button id="btn-auto-landing" onclick="autoRecommendLanding()" style="background:var(--cyan);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-RECOMMEND LANDING</button>
-        <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
-      </div>
-      <div id="mosaic-map"></div>
-      <div class="heatmap-legend" style="margin-top:4px;">
-        <div class="hl-item"><span class="hl-swatch" style="background:#00ff88;opacity:0.6;"></span>Safe(1)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#ffaa00;opacity:0.6;"></span>Mod(5)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#4488ff;opacity:0.6;"></span>Shadow(15)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#ff4444;opacity:0.6;"></span>Hazard(20)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#1a1a2e;border:1px solid #ff4444;"></span>Impass</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#1e2233;"></span>Unsurv</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#00cc44;opacity:0.6;"></span>Gentle(&lt;15°)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#cccc00;opacity:0.6;"></span>Mod(15-30°)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#cc4400;opacity:0.6;"></span>Steep(30-45°)</div>
-        <div class="hl-item"><span class="hl-swatch" style="background:#000000;"></span>Impass(&gt;45°)</div>
-      </div>
-      <div class="note" style="margin-top:2px;">Click: <span style="color:var(--green);">SET LANDING</span> then click mosaic for L, <span style="color:var(--red);">SET TARGET</span> then click for T</div>
-      <div id="hazard-sidebar"></div>
-    </div>
-  </div>
-
-  <div class="pnl">
-    <div class="pnl-hdr"><span class="pnl-title">Route Comparison</span></div>
-    <div class="pnl-body">
-      <div class="route-cards" id="route-cards"></div>
-      <div id="constrained-result"></div>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <div class="pnl">
-      <div class="pnl-hdr"><span class="pnl-title">Constraint Planner</span></div>
-      <div class="pnl-body">
-        <div class="cst-row">
-          <label>Max Shadow Exposure</label>
-          <input type="range" id="slider-shadow" min="0" max="100" value="50" oninput="el('val-shadow').textContent=this.value+'%'">
-          <span class="cv" id="val-shadow">50%</span>
-        </div>
-        <div class="cst-row">
-          <label>Min Hazard Clearance</label>
-          <input type="range" id="slider-clearance" min="0" max="3" step="1" value="1" oninput="el('val-clearance').textContent=this.value">
-          <span class="cv" id="val-clearance">1</span>
-        </div>
-        <button class="btn-recalc" onclick="runConstrainedPlan(this)">RECALCULATE</button>
-      </div>
-    </div>
-    <div class="pnl">
-      <div class="pnl-hdr"><span class="pnl-title">Selected Route Stats</span></div>
-      <div class="pnl-body">
-        <div id="path-stats-card" style="font-family:var(--mono);font-size:10px;color:var(--dim);">No route data</div>
-      </div>
-    </div>
-  </div>
-</div><!-- /terrain-main -->
-
-<!-- ═══ AI ADVISOR PANEL (right side) ═══ -->
-<div id="advisor-panel" style="flex:2;min-width:280px;max-width:400px;position:sticky;top:92px;max-height:calc(100vh - 104px);overflow-y:auto;">
-  <div class="pnl">
-    <div class="pnl-hdr">
-      <span class="pnl-title">AI Mission Advisor</span>
-      <span class="pnl-badge" id="advisor-status-badge" style="border-color:var(--dim);color:var(--dim);">IDLE</span>
-    </div>
-    <div class="pnl-body" style="padding:10px;">
-      <button id="btn-run-advisor" onclick="runAdvisor()" style="width:100%;background:var(--cyan);color:#0a0e17;border:none;padding:8px 12px;cursor:pointer;font-weight:bold;font-size:12px;font-family:var(--mono);margin-bottom:10px;">RUN AI ADVISOR</button>
-
-      <!-- Commander Briefing -->
-      <div id="advisor-briefing" style="display:none;margin-bottom:12px;">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:4px;">Mission Commander's Briefing</div>
-        <div id="advisor-briefing-status" style="font-family:var(--mono);font-size:11px;font-weight:bold;padding:4px 8px;margin-bottom:6px;"></div>
-        <div id="advisor-briefing-text" style="font-family:var(--mono);font-size:11px;color:var(--txt);line-height:1.5;padding:8px;background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);"></div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px;">
-          Specialists: <span id="advisor-specialists"></span> | Flags: <span id="advisor-flag-count">0</span>
-        </div>
-      </div>
-
-      <!-- Pending Decisions -->
-      <div id="advisor-pending-section" style="display:none;">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--amber);text-transform:uppercase;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">
-          Pending Decisions <span id="advisor-pending-count" style="background:var(--amber);color:#0a0e17;padding:1px 6px;font-size:9px;margin-left:4px;">0</span>
-        </div>
-        <div id="advisor-pending-list"></div>
-      </div>
-
-      <!-- Resolved Decisions -->
-      <div id="advisor-resolved-section" style="display:none;margin-top:10px;">
-        <div onclick="document.getElementById('advisor-resolved-list').style.display=document.getElementById('advisor-resolved-list').style.display==='none'?'block':'none'" style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--border);padding-bottom:4px;">
-          Resolved <span id="advisor-resolved-count">0</span>
-        </div>
-        <div id="advisor-resolved-list" style="display:none;"></div>
-      </div>
-
-      <!-- Loading spinner -->
-      <div id="advisor-loading" style="display:none;text-align:center;padding:20px;">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--cyan);">Analyzing mission data...</div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px;">Running specialists via Ollama</div>
-      </div>
-    </div>
-  </div>
-</div>
-</div><!-- /flex container -->
-</div><!-- /tab-terrain -->
-
-<!-- ═══ DETECTION TAB ═══ -->
-<div class="tab-page" id="tab-detection">
-  <div class="grid-2">
-    <div>
-      <div class="pnl">
-        <div class="pnl-hdr"><span class="pnl-title">Shadow Analysis</span></div>
-        <div class="pnl-body" id="shadow-summary-body">
-          <div class="shadow-summary" id="shadow-summary-text">Shadow: -- | -- regions | Largest: --</div>
-        </div>
-      </div>
-      <div class="pnl">
-        <div class="pnl-hdr"><span class="pnl-title">Hazard Density by Quadrant</span></div>
-        <div class="pnl-body" style="padding:4px;">
-          <table class="quad-table">
-            <thead><tr><th>Quadrant</th><th style="text-align:right;">Hazards</th><th style="text-align:right;">Shadow%</th><th>Risk</th></tr></thead>
-            <tbody id="quad-table-body"><tr><td colspan="4" style="color:var(--dim);text-align:center;">No data</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div>
-      <div class="pnl">
-        <div class="pnl-hdr">
-          <span class="pnl-title">ML Object Detection</span>
-          <span class="pnl-badge" id="yolo-model-badge" style="background:var(--panel);color:var(--dim);">--</span>
-        </div>
-        <div class="pnl-body">
-          <div id="yolo-summary" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px;">No detections yet</div>
-          <div id="yolo-image-wrap" style="position:relative;">
-            <img id="img-yolo" class="map-img" src="" alt="" style="display:none;">
-            <div id="img-yolo-ph" class="img-placeholder" style="min-height:60px;">NO ML DATA</div>
+          <div class="task-box">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Science Feed</div>
+            <ul id="science-feed" class="science-feed"></ul>
           </div>
-          <div id="yolo-detections-list" style="margin-top:6px;font-family:var(--mono);font-size:10px;max-height:200px;overflow-y:auto;"></div>
+          <div id="llm-bar">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Ask</span>
+            <input id="llm-input" type="text" placeholder="Ask about mission state..." onkeydown="if(event.key==='Enter')sendLLM()">
+            <button type="button" onclick="sendLLM()">ASK</button>
+          </div>
+          <div id="llm-response"></div>
         </div>
       </div>
     </div>
@@ -825,10 +709,17 @@ input.active-input { border-color: var(--cyan); }
   <div class="pnl" style="border-color:rgba(255,149,0,0.4);">
     <div class="pnl-hdr" style="border-bottom-color:rgba(255,149,0,0.3);">
       <span class="pnl-title">Change Detection</span>
-      <span class="pnl-badge core">CORE SCIENCE</span>
+      <span class="pnl-badge core">OBJECT-LEVEL</span>
     </div>
     <div class="pnl-body">
       <div id="change-summary" style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:4px;display:none;"></div>
+
+      <!-- Object count comparison -->
+      <div id="change-counts" style="display:none;margin-bottom:8px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Object Count Comparison</div>
+        <div id="change-counts-body" style="font-family:var(--mono);font-size:11px;"></div>
+      </div>
+
       <div id="change-cell-tabs" class="change-cell-tabs"></div>
       <div id="change-slider" class="cs-wrap" style="display:none;">
         <img class="cs-before" id="cs-before-img" src="" alt="Before">
@@ -842,7 +733,7 @@ input.active-input { border-color: var(--cyan); }
         <svg class="cs-bbox-overlay" id="cs-bbox-overlay"></svg>
       </div>
       <div id="change-slider-ph" class="cs-wrap">
-        <div class="cs-placeholder">Change detection requires 2+ passes of the same grid cell</div>
+        <div class="cs-placeholder">Change detection requires 2+ passes over the same terrain.<br>Currently operating on a single pass — no changes to detect yet.</div>
       </div>
       <div id="change-events-list"></div>
       <div id="change-low-conf-warning" class="change-warning" style="display:none;"></div>
@@ -924,12 +815,6 @@ input.active-input { border-color: var(--cyan); }
     </div>
   </div>
 
-  <div id="llm-bar">
-    <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">LLM Query</span>
-    <input id="llm-input" type="text" placeholder="Ask about mission state (requires local ollama)" onkeydown="if(event.key==='Enter')sendLLM()">
-    <button onclick="sendLLM()">ASK</button>
-  </div>
-  <div id="llm-response"></div>
 </div>
 
 </div><!-- /content -->
@@ -955,16 +840,15 @@ function switchTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   // Leaflet needs to be initialized when its container is first visible
-  if (name === 'terrain') {
+  if (name === 'overview') {
     setTimeout(function() {
       ensureLeafletMap();
       if (_leafletMap) {
         _leafletMap.invalidateSize();
-        // Load mosaic image if we have info
         if (_mosaicInfo && _mosaicInfo.image_count > 0) _updateMosaicImage(_mosaicInfo);
-        // Redraw routes if we have them
-        if (_mosaicRouteData && _mosaicInfo) _updateRoutes(_mosaicRouteData, _mosaicInfo);
-        _updateEndpointMarkers();
+        mosaicRedraw();
+        if (_mosaicInfo) _updateSlopeGrid(_mosaicInfo);
+        if (_heatmapData && _mosaicInfo) _updateChanges(_heatmapData, _mosaicInfo);
       }
     }, 50);
   }
@@ -992,7 +876,6 @@ function toggleCollapse(hdr) {
 // ─── Constants ──────────────────────────────────────────────────────────────
 const POLL_STATUS_MS   = 2000;
 const POLL_IMAGES_MS   = 3000;
-const POLL_COVERAGE_MS = 3000;
 const POLL_QUALITY_MS  = 5000;
 const POLL_LOG_MS      = 3000;
 const POLL_ROUTES_MS   = 3000;
@@ -1079,7 +962,7 @@ async function pollStatus() {
     sRoute.textContent = route.status || '--';
     sRoute.className = 'v' + (route.status === 'no viable route' ? ' alert' : '');
     const ch = m.changes || {};
-    setText('s-changes', ch.total_events != null ? `${ch.total_events} event(s) · ${fmtNum(ch.total_changed_area_cm2,1)} cm²` : '--');
+    setText('s-changes', ch.total_events != null ? `${ch.total_events} event(s)` : 'Awaiting 2+ passes');
     setText('s-updated',  m.last_updated ? m.last_updated.replace('T',' ').slice(0,19) : '--');
 
     // ── Telemetry panel ──
@@ -1097,14 +980,9 @@ async function pollStatus() {
     setText('t-nadir',   t.nadir_locked != null ? (t.nadir_locked ? 'LOCKED' : 'FREE') : '--');
     setText('t-uptime',  t.uptime_sec   != null ? fmtFmt(t.uptime_sec) : '--');
 
-    // ── Downlink panel ──
+    // ── Downlink panel (cumulative stats only — live progress is SSE-driven) ──
     const dl = m.downlink || {};
     const totalBytes = dl.total_bytes || 0;
-    const pct = Math.min(100, totalBytes / DL_BUDGET_BYTES * 100).toFixed(1);
-    el('dl-bar').style.width = pct + '%';
-    setText('dl-bytes',       `${totalBytes.toLocaleString()} / ${DL_BUDGET_BYTES.toLocaleString()}`);
-    setText('dl-rate',        dl.effective_rate_bps != null ? fmtNum(dl.effective_rate_bps,0) : '--');
-    el('dl-rate-badge').textContent = (dl.effective_rate_bps != null ? fmtNum(dl.effective_rate_bps,0) : '--') + ' B/s';
     setText('dl-total-bytes', totalBytes.toLocaleString());
     const failed = dl.failed_transfers ?? 0;
     const dlFailed = el('dl-failed');
@@ -1120,14 +998,11 @@ async function pollStatus() {
       cSumEl.textContent = `${ch.total_events} change event(s) detected · ${fmtNum(ch.total_changed_area_cm2,1)} cm² total · largest: ${fmtNum(ch.largest_change_cm2,1)} cm²`;
     }
 
-    // ── Coverage badge ──
-    el('coverage-pct-badge').textContent = cov.pct != null ? cov.pct + '%' : '0%';
-
     // ── Overview stat cards ──
-    setText('ov-images', m.total_images_received ?? '--');
-    setText('ov-coverage', cov.pct != null ? cov.pct + '%' : '--');
-    setText('ov-changes', ch.total_events ?? '--');
-    setText('ov-route', route.path_length_cells ?? '--');
+    // Update hazard counts in mission status
+    const ml = (m.ml_detection || {});
+    setText('s-craters', ml.total_craters ?? '--');
+    setText('s-boulders', ml.total_boulders ?? '--');
 
     // ── Change→Route impact check ──
     if (_lastRouteData) checkChangeRouteImpact(d, _lastRouteData);
@@ -1191,7 +1066,7 @@ function updateMissionControl(state, pass) {
   // Button states
   // Enable START PASS when WAITING, or when connected but no telemetry yet
   const unknownState = !s || s === '--';
-  const isWaiting = s === 'WAITING' || s === 'SAFE_MODE' || (unknownState && _cubeSatConnected);
+  const isWaiting = s === 'WAITING' || s === 'SAFE_MODE' || unknownState;
   const isImaging = s === 'IMAGING';
 
   // START PASS — active when WAITING (or connected with unknown state)
@@ -1224,12 +1099,15 @@ function _mcFeedback(msg, ok) {
 }
 
 async function mcStartPass(btn) {
+  console.log('mcStartPass called');
   try {
     const r = await fetch('/api/start_pass', { method: 'POST' });
     const d = await r.json();
+    console.log('start_pass response:', d);
     _mcFeedback(d.success ? 'PASS STARTED' : (d.error || 'FAILED'), d.success);
     if (btn) flashBtn(btn, d.success);
   } catch(e) {
+    console.error('mcStartPass error:', e);
     _mcFeedback('NETWORK ERROR', false);
   }
 }
@@ -1388,7 +1266,7 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
-let _mosaicShowOnlyRoute = null; // key of route shown solo, or null for all
+let _mosaicVisibleRoutes = new Set(['fastest', 'safest', 'balanced']); // which routes are visible on map
 
 function renderRouteCards(routes) {
   const selected = routes.selected || 'safest';
@@ -1402,20 +1280,14 @@ function renderRouteCards(routes) {
     const rd = routes[name];
     if (!rd) continue;
 
+    const isVisible = _mosaicVisibleRoutes.has(name);
     const card = document.createElement('div');
-    card.className = 'route-card' + (name === selected ? ' selected-card' : '');
+    card.className = 'route-card' + (name === selected ? ' selected-card' : '') + (!isVisible ? ' route-hidden' : '');
     card.style.borderLeftColor = colours[name];
+    card.style.opacity = isVisible ? '1' : '0.4';
 
-    // Shadow bar
-    const shadowPct = rd.max_shadow_exposure_pct ?? 0;
-    const barColor = shadowPct < 10 ? '#00ff88' : shadowPct < 25 ? '#ffaa00' : '#ff4444';
-    const barWidth = Math.min(100, shadowPct);
-
-    // Risk text
     const riskLevel = rd.risk_level || 'MODERATE';
     const riskColor = riskLevel === 'LOW' ? '#00ff88' : riskLevel === 'MODERATE' ? '#ffaa00' : '#ff4444';
-
-    const showOnlyActive = _mosaicShowOnlyRoute === name;
 
     card.innerHTML = `
       <div class="rc-name">
@@ -1423,15 +1295,11 @@ function renderRouteCards(routes) {
         ${(rd.name || name).toUpperCase()} ROUTE
       </div>
       <div class="rc-kv"><span>Distance</span><span class="rv">${rd.path_length_cells ?? '--'} cells</span></div>
-      <div class="rc-kv"><span>Shadow</span><span class="rv rc-shadow-bar">
-        <span class="rc-shadow-track"><span class="rc-shadow-fill" style="width:${barWidth}%;background:${barColor};"></span></span>
-        ${shadowPct.toFixed(1)}%
-      </span></div>
       <div class="rc-kv"><span>Hazards</span><span class="rv">${rd.hazards_near_path ?? 0} nearby</span></div>
       <div class="rc-kv"><span>Risk</span><span class="rv" style="color:${riskColor};font-weight:700;">${riskLevel}</span></div>
       <div class="rc-actions">
         <button onclick="event.stopPropagation();selectRoute('${name}')">SELECT</button>
-        <button class="${showOnlyActive ? 'active-show' : ''}" onclick="event.stopPropagation();toggleShowOnly('${name}')">SHOW ONLY</button>
+        <button class="${isVisible ? 'active-show' : ''}" onclick="event.stopPropagation();toggleRouteVisible('${name}')">${isVisible ? 'HIDE' : 'SHOW'}</button>
       </div>
     `;
     container.appendChild(card);
@@ -1449,10 +1317,17 @@ function renderRouteCards(routes) {
     routeBadge.style.borderColor = 'var(--red)';
     routeBadge.style.color = 'var(--red)';
   }
+
+  // Refresh route lines on map
+  if (_lastRouteData && _mosaicInfo) _updateRoutes(_lastRouteData, _mosaicInfo);
 }
 
-function toggleShowOnly(name) {
-  _mosaicShowOnlyRoute = (_mosaicShowOnlyRoute === name) ? null : name;
+function toggleRouteVisible(name) {
+  if (_mosaicVisibleRoutes.has(name)) {
+    _mosaicVisibleRoutes.delete(name);
+  } else {
+    _mosaicVisibleRoutes.add(name);
+  }
   if (_lastRouteData) renderRouteCards(_lastRouteData);
 }
 
@@ -1476,7 +1351,6 @@ function renderPathStatsCard(routes) {
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Route</span><span class="v">${rd.name || selected}</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Landing→Target</span><span class="v">[${startPt[0]},${startPt[1]}]→[${endPt[0]},${endPt[1]}]</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Distance</span><span class="v">${rd.path_length_cells} cells / ${rd.distance_cm} cm</span></div>
-    <div class="kv" style="border:none;padding:1px 0;"><span class="k">Shadow %</span><span class="v">${rd.max_shadow_exposure_pct != null ? rd.max_shadow_exposure_pct.toFixed(1)+'%' : '--'}</span></div>
     <div class="kv" style="border:none;padding:1px 0;"><span class="k">Hazards Near</span><span class="v">${rd.hazards_near_path}</span></div>
     <div class="kv" style="border:none;padding:2px 0;"><span class="k">Risk</span><span class="v"><span class="${riskClass} risk-badge">${rd.risk_level}</span></span></div>
     <div style="margin-top:6px;font-size:10px;color:var(--text-dim);">${rec}</div>
@@ -1496,7 +1370,7 @@ async function selectRoute(name) {
 
 // ─── Constrained route planner ────────────────────────────────────────────────
 async function runConstrainedPlan(btn) {
-  const maxShadow = parseFloat(el('slider-shadow').value);
+  const maxShadow = 100; // shadow not applicable for sandbox
   const clearance = parseInt(el('slider-clearance').value);
   btn.disabled = true;
   btn.textContent = 'PLANNING...';
@@ -1634,12 +1508,15 @@ let _leafletMap = null;
 let _mosaicImageLayer = null;
 let _hazardMarkersLayer = null;
 let _costGridLayer = null;
+let _segContourLayer = null;
 let _slopeGridLayer = null;
 let _routeLayer = null;
 let _changeLayer = null;
 let _landingMarker = null;
 let _targetMarker = null;
 let _landingCandidatesLayer = null;
+let _roughnessLayer = null;
+let _roughnessImageOverlay = null;
 
 // Catmull-Rom spline interpolation for smooth routes
 function catmullRomSpline(points, numSegments) {
@@ -1689,13 +1566,19 @@ function getHazardColor(cls) {
 }
 
 function hmCellFill(cost, cls, surveyed) {
-  if (!surveyed) return null;
-  if (cls === 'IMPASSABLE' || cost >= 999) return 'rgba(255,68,68,0.35)';
-  if (cost <= 1)  return 'rgba(0,255,136,0.35)';
-  if (cost <= 5)  return 'rgba(255,170,0,0.35)';
-  if (cost <= 15) return 'rgba(68,136,255,0.35)';
-  if (cost <= 20) return 'rgba(255,68,68,0.35)';
-  return null;
+  if (!surveyed) return 'rgba(60,60,60,0.15)';
+  if (cls === 'IMPASSABLE' || cost >= 999) return 'rgba(180,0,0,0.6)';
+  if (cls === 'CRATER' || (cost >= 100 && cost < 999)) return 'rgba(255,50,0,0.55)';
+  if (cost >= 20) return 'rgba(255,68,68,0.5)';
+  if (cost >= 15) return 'rgba(68,136,255,0.45)';
+  // Gradient for costs 1–14: green(1) → yellow(5) → orange(14)
+  // Normalize to 0..1 across the 1–14 range
+  const t = Math.min(Math.max((cost - 1) / 13, 0), 1);
+  const r = Math.round(0 + t * 255);
+  const g = Math.round(220 - t * 100);
+  const b = Math.round(100 - t * 100);
+  const a = (0.3 + t * 0.25).toFixed(2);
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 function slopeCellColor(slopeDeg) {
@@ -1733,21 +1616,28 @@ function ensureLeafletMap() {
 
   // Create overlay layer groups
   _hazardMarkersLayer = L.layerGroup().addTo(_leafletMap);
-  _costGridLayer = L.layerGroup();
-  _slopeGridLayer = L.layerGroup();
+  _segContourLayer = L.layerGroup();  // off by default — old model over-classifies
+  _costGridLayer = L.layerGroup();  // off by default — toggle from layer control
+  _slopeGridLayer = L.layerGroup();  // not added by default
   _routeLayer = L.layerGroup().addTo(_leafletMap);
-  _changeLayer = L.layerGroup().addTo(_leafletMap);
+  _changeLayer = L.layerGroup();     // not added by default
   _landingCandidatesLayer = L.layerGroup().addTo(_leafletMap);
+  _roughnessLayer = L.layerGroup();  // off by default — toggle from layer control
 
   // Layer control
   L.control.layers(null, {
     'Hazard Markers': _hazardMarkersLayer,
+    'Segmentation': _segContourLayer,
     'Cost Grid': _costGridLayer,
-    'Slopes': _slopeGridLayer,
     'Routes': _routeLayer,
-    'Changes': _changeLayer,
     'Landing Candidates': _landingCandidatesLayer,
+    'Terrain Roughness': _roughnessLayer,
   }, { collapsed: false, position: 'topright' }).addTo(_leafletMap);
+
+  // Load roughness overlay when layer is toggled on
+  _leafletMap.on('overlayadd', function(e) {
+    if (e.name === 'Terrain Roughness') { loadRoughnessOverlay(); }
+  });
 
   // Click handler for landing/target mode
   _leafletMap.on('click', function(e) {
@@ -1862,10 +1752,12 @@ function autoRecommendLanding() {
         marker.bindTooltip(labels[i], { permanent: true, direction: 'top', className: '' });
         _landingCandidatesLayer.addLayer(marker);
 
-        // Auto-set #1 as the landing point
+        // Auto-set #1 as the landing point and auto-pick target
         if (i === 0) {
           _routeStartMosaic = [mx, my];
           _updateEndpointMarkers();
+          // Auto-recommend target from this landing point
+          autoRecommendTarget();
         }
       });
 
@@ -1879,6 +1771,40 @@ function autoRecommendLanding() {
     });
 }
 
+// ─── Auto-recommend target ──────────────────────────────────────────────────
+function autoRecommendTarget() {
+  const fb = el('plan-routes-feedback');
+  if (!_routeStartMosaic) {
+    fb.textContent = 'Set or auto-recommend a landing point first';
+    fb.style.color = 'var(--amber)';
+    return;
+  }
+
+  const [lx, ly] = _routeStartMosaic;
+  fb.textContent = 'Finding optimal target point...';
+  fb.style.color = 'var(--cyan)';
+
+  fetch(`/api/recommend_target?lx=${lx}&ly=${ly}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { fb.textContent = 'Error: ' + data.error; fb.style.color = 'var(--red)'; return; }
+
+      const [tx, ty] = data.target_mosaic_px;
+      _routeEndMosaic = [tx, ty];
+      _updateEndpointMarkers();
+
+      fb.textContent = `Target set at (${Math.round(tx)}, ${Math.round(ty)}) — ${data.distance_cells} cells from landing — auto-planning...`;
+      fb.style.color = 'var(--red)';
+
+      // Auto-plan routes
+      planRoutes(null);
+    })
+    .catch(err => {
+      fb.textContent = 'Target recommendation failed: ' + err;
+      fb.style.color = 'var(--red)';
+    });
+}
+
 // ─── Mission summary ─────────────────────────────────────────────────────────
 function loadMissionSummary() {
   fetch('/api/mission_summary')
@@ -1888,151 +1814,6 @@ function loadMissionSummary() {
       console.log('Mission summary:', data);
     })
     .catch(err => console.warn('Mission summary fetch failed:', err));
-}
-
-// ─── AI Advisor ──────────────────────────────────────────────────────────────
-let _advisorDecisions = [];
-
-function runAdvisor() {
-  const btn = el('btn-run-advisor');
-  const loading = el('advisor-loading');
-  const briefingDiv = el('advisor-briefing');
-  const badge = el('advisor-status-badge');
-
-  btn.disabled = true;
-  btn.textContent = 'ANALYZING...';
-  loading.style.display = 'block';
-  briefingDiv.style.display = 'none';
-  badge.textContent = 'RUNNING';
-  badge.style.borderColor = 'var(--cyan)';
-  badge.style.color = 'var(--cyan)';
-
-  fetch('/api/advisor/run', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      loading.style.display = 'none';
-      btn.disabled = false;
-      btn.textContent = 'RUN AI ADVISOR';
-
-      if (data.error) {
-        badge.textContent = 'ERROR';
-        badge.style.borderColor = 'var(--red)';
-        badge.style.color = 'var(--red)';
-        return;
-      }
-
-      // Render briefing
-      const b = data.briefing || {};
-      briefingDiv.style.display = 'block';
-
-      const statusEl = el('advisor-briefing-status');
-      const statusMap = { 'GO': ['GO', '--green'], 'CONDITIONAL': ['CONDITIONAL GO', '--amber'], 'NO-GO': ['NO-GO', '--red'] };
-      const [statusText, statusColor] = statusMap[b.status] || ['UNKNOWN', '--dim'];
-      statusEl.textContent = statusText;
-      statusEl.style.color = `var(${statusColor})`;
-      statusEl.style.borderLeft = `3px solid var(${statusColor})`;
-
-      el('advisor-briefing-text').textContent = b.text || 'No briefing generated.';
-      el('advisor-specialists').textContent = (b.specialists_dispatched || []).join(', ') || 'none';
-      el('advisor-flag-count').textContent = b.total_flags || 0;
-
-      badge.textContent = statusText;
-      badge.style.borderColor = `var(${statusColor})`;
-      badge.style.color = `var(${statusColor})`;
-
-      // Render decisions
-      _advisorDecisions = data.decisions || [];
-      _renderAdvisorDecisions();
-    })
-    .catch(err => {
-      loading.style.display = 'none';
-      btn.disabled = false;
-      btn.textContent = 'RUN AI ADVISOR';
-      badge.textContent = 'ERROR';
-      badge.style.borderColor = 'var(--red)';
-      badge.style.color = 'var(--red)';
-      console.error('Advisor failed:', err);
-    });
-}
-
-function _renderAdvisorDecisions() {
-  // Fetch full decision log to include resolved ones
-  fetch('/api/advisor/decisions')
-    .then(r => r.json())
-    .then(data => {
-      const all = data.decisions || [];
-      const pending = all.filter(d => d.status === 'PENDING_HUMAN_APPROVAL');
-      const resolved = all.filter(d => d.status !== 'PENDING_HUMAN_APPROVAL');
-
-      // Pending
-      const pendingSec = el('advisor-pending-section');
-      const pendingList = el('advisor-pending-list');
-      el('advisor-pending-count').textContent = pending.length;
-
-      if (pending.length > 0) {
-        pendingSec.style.display = 'block';
-        pendingList.innerHTML = pending.map(d => _decisionCardHtml(d)).join('');
-      } else {
-        pendingSec.style.display = 'none';
-        pendingList.innerHTML = '';
-      }
-
-      // Resolved
-      const resolvedSec = el('advisor-resolved-section');
-      el('advisor-resolved-count').textContent = resolved.length;
-      if (resolved.length > 0) {
-        resolvedSec.style.display = 'block';
-        el('advisor-resolved-list').innerHTML = resolved.map(d => _resolvedCardHtml(d)).join('');
-      } else {
-        resolvedSec.style.display = 'none';
-      }
-    });
-}
-
-function _decisionCardHtml(d) {
-  const sevColor = d.severity === 'CRITICAL' ? 'var(--red)' : d.severity === 'WARNING' ? 'var(--amber)' : 'var(--dim)';
-  return `<div style="border:1px solid ${sevColor};padding:8px;margin-bottom:8px;background:rgba(0,0,0,0.2);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-      <span style="font-family:var(--mono);font-size:10px;color:${sevColor};font-weight:bold;">${d.severity} — ${d.flag_type}</span>
-      <span style="font-family:var(--mono);font-size:9px;color:var(--dim);">${d.agent}</span>
-    </div>
-    <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px;">${d.description}</div>
-    <div style="font-family:var(--mono);font-size:10px;color:var(--txt);margin-bottom:4px;line-height:1.4;">
-      <b>AI:</b> ${d.ai_recommendation || 'N/A'}
-    </div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:6px;line-height:1.3;">${d.ai_reasoning || ''}</div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:6px;">Confidence: <b>${d.ai_confidence || '?'}</b></div>
-    <div style="display:flex;gap:4px;">
-      <button onclick="approveDecision('${d.id}','APPROVED')" style="flex:1;background:var(--green);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">APPROVE</button>
-      <button onclick="approveDecision('${d.id}','OVERRIDDEN')" style="flex:1;background:var(--amber);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">OVERRIDE</button>
-      <button onclick="approveDecision('${d.id}','DEFERRED')" style="flex:1;background:var(--dim);color:#0a0e17;border:none;padding:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:bold;">DEFER</button>
-    </div>
-  </div>`;
-}
-
-function _resolvedCardHtml(d) {
-  const actionColor = d.operator_action === 'APPROVED' ? 'var(--green)' : d.operator_action === 'OVERRIDDEN' ? 'var(--amber)' : 'var(--dim)';
-  return `<div style="border:1px solid var(--border);padding:6px;margin-bottom:4px;opacity:0.7;">
-    <div style="font-family:var(--mono);font-size:9px;">
-      <span style="color:${actionColor};">${d.operator_action || d.status}</span> —
-      <span style="color:var(--dim);">${d.flag_type} (${d.agent})</span>
-    </div>
-  </div>`;
-}
-
-function approveDecision(id, action) {
-  fetch('/api/advisor/approve', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: id, action: action, note: '' }),
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        _renderAdvisorDecisions();
-      }
-    })
-    .catch(err => console.error('Approve failed:', err));
 }
 
 // ─── Update mosaic base layer ────────────────────────────────────────────────
@@ -2060,76 +1841,217 @@ function _updateMosaicImage(mosaicInfo) {
 
 // ─── Update hazard markers from YOLO detections ──────────────────────────────
 function _updateHazardMarkers(detections) {
+  if (!_hazardMarkersLayer) return;
   _hazardMarkersLayer.clearLayers();
   const sidebar = el('hazard-sidebar');
   let sidebarHtml = '';
 
-  for (const det of detections) {
+  // Filter: only show high-confidence hazard detections
+  const MIN_DISPLAY_CONF = 0.80;
+  const MIN_LABEL_CONF = 0.85;  // only show text labels above this
+  const MAX_DISPLAYED = 25;     // cap to prevent visual clutter
+  const filtered = detections
+    .filter(d => d.confidence >= MIN_DISPLAY_CONF)
+    .slice(0, MAX_DISPLAYED);
+
+  for (const det of filtered) {
     const [mcx, mcy] = det.center_mosaic;
     const color = getHazardColor(det.class);
     const ll = mosaicToLatLng(mcx, mcy);
+    const confPct = (det.confidence * 100).toFixed(0);
 
     const popupContent =
       `<b>${det.class}</b><br>` +
-      `Confidence: ${(det.confidence * 100).toFixed(0)}%<br>` +
+      `Confidence: ${confPct}%<br>` +
       `Source: ${det.source_image}<br>` +
       `Position: (${Math.round(mcx)}, ${Math.round(mcy)})`;
 
-    // Contour polygon (preferred) or fallback bbox rectangle
+    // Contour polygon (preferred) or subtle bbox outline
     if (det.contour_mosaic && det.contour_mosaic.length >= 3) {
       const contourLatLngs = det.contour_mosaic.map(p => mosaicToLatLng(p[0], p[1]));
       const poly = L.polygon(contourLatLngs, {
-        color: color, weight: 2, fillColor: color, fillOpacity: 0.25,
+        color: color, weight: 2, fillColor: color, fillOpacity: 0.18,
       });
       poly.bindPopup(popupContent);
       _hazardMarkersLayer.addLayer(poly);
     } else if (det.bbox_mosaic) {
+      // Inset the bbox by 15% for a tighter-looking outline
       const [bx1, by1, bx2, by2] = det.bbox_mosaic;
+      const dx = (bx2 - bx1) * 0.15, dy = (by2 - by1) * 0.15;
       const rectBounds = L.latLngBounds(
-        mosaicToLatLng(bx1, by2),
-        mosaicToLatLng(bx2, by1),
+        mosaicToLatLng(bx1 + dx, by2 - dy),
+        mosaicToLatLng(bx2 - dx, by1 + dy),
       );
       const rect = L.rectangle(rectBounds, {
-        color: color, weight: 1, fillOpacity: 0.1, dashArray: '4 2',
+        color: color, weight: 1.5, fillOpacity: 0.08, dashArray: '3 3',
       });
       rect.bindPopup(popupContent);
       _hazardMarkersLayer.addLayer(rect);
     }
 
-    // Detection label at center
-    const labelText = `${det.class.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
-    const labelIcon = L.divIcon({
-      className: '',
-      html: `<div style="
-        background:${color}; color:#fff; font-size:10px; font-weight:700;
-        font-family:var(--mono,monospace); padding:1px 4px; border-radius:3px;
-        white-space:nowrap; pointer-events:none; opacity:0.9;
-        text-shadow:0 1px 2px rgba(0,0,0,0.5);
-      ">${labelText}</div>`,
-      iconSize: null,
-      iconAnchor: [0, -8],
-    });
-    const labelMarker = L.marker(ll, { icon: labelIcon, interactive: false });
-    _hazardMarkersLayer.addLayer(labelMarker);
+    // Only show text label for higher-confidence detections to reduce clutter
+    if (det.confidence >= MIN_LABEL_CONF) {
+      const labelText = `${det.class.toUpperCase()} ${confPct}%`;
+      const labelIcon = L.divIcon({
+        className: '',
+        html: `<div style="
+          background:${color}; color:#fff; font-size:9px; font-weight:700;
+          font-family:var(--mono,monospace); padding:1px 3px; border-radius:2px;
+          white-space:nowrap; pointer-events:none; opacity:0.85;
+          text-shadow:0 1px 2px rgba(0,0,0,0.5);
+        ">${labelText}</div>`,
+        iconSize: null,
+        iconAnchor: [0, -8],
+      });
+      const labelMarker = L.marker(ll, { icon: labelIcon, interactive: false });
+      _hazardMarkersLayer.addLayer(labelMarker);
+    }
 
     // Sidebar entry
     sidebarHtml += `<div class="hazard-item" onclick="_leafletMap.flyTo(L.latLng(${-mcy},${mcx}), 1)">` +
       `<span class="hazard-dot" style="background:${color};"></span>` +
       `<span class="hazard-class">${det.class}</span>` +
       `<span>${det.source_image}</span>` +
-      `<span class="hazard-conf">${(det.confidence * 100).toFixed(0)}%</span>` +
+      `<span class="hazard-conf">${confPct}%</span>` +
       `</div>`;
   }
 
   if (sidebar) {
-    sidebar.innerHTML = detections.length
-      ? `<div style="padding:4px 8px;font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--border);">${detections.length} Detection(s)</div>` + sidebarHtml
+    const label = `${filtered.length} Detection(s)`;
+    sidebar.innerHTML = filtered.length
+      ? `<div style="padding:4px 8px;font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--border);">${label}</div>` + sidebarHtml
       : '';
+  }
+}
+
+// ─── Update segmentation contour overlay ─────────────────────────────────────
+const _SEG_COLORS = {
+  'CRATER':        {color: '#ff6644', fill: 'rgba(255,102,68,0.20)'},
+  'BOULDER':       {color: '#ff4400', fill: 'rgba(255,68,0,0.25)'},
+  'SHADOW':        {color: '#4488ff', fill: 'rgba(68,136,255,0.15)'},
+  'ROUGH_TERRAIN': {color: '#ffaa00', fill: 'rgba(255,170,0,0.10)'},
+};
+
+async function _updateSegContours() {
+  if (!_segContourLayer) return;
+  _segContourLayer.clearLayers();
+  try {
+    const r = await fetch('/api/segmentation_contours');
+    if (!r.ok) return;
+    const data = await r.json();
+    const contours = data.contours || [];
+
+    for (const c of contours) {
+      const cls = c.class || 'unknown';
+      const style = _SEG_COLORS[cls] || {color: '#ffaa00', fill: 'rgba(255,170,0,0.15)'};
+      const polygon = c.polygon || [];
+      if (polygon.length < 3) continue;
+
+      const latlngs = polygon.map(p => mosaicToLatLng(p[0], p[1]));
+      const poly = L.polygon(latlngs, {
+        color: style.color,
+        weight: 2,
+        fillColor: style.fill,
+        fillOpacity: 1,
+        dashArray: cls === 'SHADOW' ? '4 3' : null,
+      });
+
+      // Label at centroid
+      const cx = polygon.reduce((s, p) => s + p[0], 0) / polygon.length;
+      const cy = polygon.reduce((s, p) => s + p[1], 0) / polygon.length;
+      const label = cls.charAt(0) + cls.slice(1).toLowerCase();
+      poly.bindPopup(`<b>${label}</b><br>Area: ${c.area_cells} cells`);
+
+      // Small label at centroid for larger features
+      if (c.area_cells >= 8) {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="
+            color:${style.color}; font-size:9px; font-weight:700;
+            font-family:var(--mono,monospace); white-space:nowrap;
+            pointer-events:none; text-shadow:0 0 3px rgba(0,0,0,0.8);
+            opacity:0.9;
+          ">${label}</div>`,
+          iconSize: null,
+          iconAnchor: [15, 6],
+        });
+        _segContourLayer.addLayer(L.marker(mosaicToLatLng(cx, cy), {icon, interactive: false}));
+      }
+
+      _segContourLayer.addLayer(poly);
+    }
+  } catch(e) {}
+}
+
+// ─── Terrain Roughness overlay ───────────────────────────────────────────────
+async function loadRoughnessOverlay() {
+  if (!_roughnessLayer || !_leafletMap) return;
+  _roughnessLayer.clearLayers();
+  if (_roughnessImageOverlay) {
+    _roughnessLayer.removeLayer(_roughnessImageOverlay);
+    _roughnessImageOverlay = null;
+  }
+  try {
+    // Fetch the roughness grid data to get mosaic dimensions
+    const r = await fetch('/api/roughness_grid');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.rows || !data.cols) return;
+
+    const mw = data.mosaic_width;
+    const mh = data.mosaic_height;
+
+    // Use the overlay PNG image
+    const bounds = L.latLngBounds(
+      mosaicToLatLng(0, mh),    // SW corner
+      mosaicToLatLng(mw, 0)     // NE corner
+    );
+    _roughnessImageOverlay = L.imageOverlay(
+      '/api/roughness_overlay?t=' + Date.now(),
+      bounds,
+      { opacity: 0.7, interactive: false }
+    );
+    _roughnessLayer.addLayer(_roughnessImageOverlay);
+
+    // Show stats in a small info box
+    const s = data.stats;
+    const statsHtml = `
+      <div style="font-size:11px;font-family:var(--mono,monospace);line-height:1.5">
+        <b>Terrain Roughness</b><br>
+        <span style="color:#00c800">■</span> Smooth: ${s.smooth_pct}%<br>
+        <span style="color:#ffb400">■</span> Moderate: ${s.moderate_pct}%<br>
+        <span style="color:#dc0000">■</span> Rough: ${s.rough_pct}%<br>
+        <small>${data.rows}×${data.cols} grid (${data.cell_size_px}px cells)</small>
+      </div>
+    `;
+    const roughnessInfo = L.control({position: 'bottomleft'});
+    roughnessInfo.onAdd = function() {
+      const div = L.DomUtil.create('div', 'leaflet-control-layers');
+      div.style.padding = '6px 10px';
+      div.style.background = 'rgba(20,20,30,0.85)';
+      div.style.color = '#ddd';
+      div.style.borderRadius = '4px';
+      div.innerHTML = statsHtml;
+      return div;
+    };
+    roughnessInfo._roughnessCtrl = true;
+    roughnessInfo.addTo(_leafletMap);
+
+    // Remove stats when layer is removed
+    _leafletMap.once('overlayremove', function(e) {
+      if (e.name === 'Terrain Roughness') {
+        _leafletMap.eachLayer(function(layer) {});
+        try { roughnessInfo.remove(); } catch(e) {}
+      }
+    });
+  } catch(e) {
+    console.error('Roughness overlay error:', e);
   }
 }
 
 // ─── Update cost grid overlay ────────────────────────────────────────────────
 function _updateCostGrid(heatmapData, mosaicInfo) {
+  if (!_costGridLayer) return;
   _costGridLayer.clearLayers();
   if (!heatmapData || !mosaicInfo) return;
 
@@ -2165,6 +2087,7 @@ function _updateCostGrid(heatmapData, mosaicInfo) {
 
 // ─── Update slope grid overlay ───────────────────────────────────────────────
 async function _updateSlopeGrid(mosaicInfo) {
+  if (!_slopeGridLayer) return;
   _slopeGridLayer.clearLayers();
   if (!mosaicInfo) return;
 
@@ -2214,7 +2137,7 @@ function _updateRoutes(routes, mosaicInfo) {
   for (const rd of routeDefs) {
     const rdata = routes[rd.key];
     if (!rdata) continue;
-    if (_mosaicShowOnlyRoute && _mosaicShowOnlyRoute !== rd.key) continue;
+    if (!_mosaicVisibleRoutes.has(rd.key)) continue;
 
     const mpath = rdata.mosaic_path;
     const gpath = rdata.path;
@@ -2277,6 +2200,7 @@ function _updateRoutes(routes, mosaicInfo) {
 
 // ─── Update change overlays ──────────────────────────────────────────────────
 function _updateChanges(heatmapData, mosaicInfo) {
+  if (!_changeLayer) return;
   _changeLayer.clearLayers();
   if (!heatmapData || !mosaicInfo) return;
 
@@ -2328,7 +2252,6 @@ async function pollCostHeatmap() {
     if (r.ok) {
       const d = await r.json();
       _heatmapData = d;
-      renderQuadrantSummary(d);
       _updateCostGrid(d, _mosaicInfo);
       _updateChanges(d, _mosaicInfo);
     }
@@ -2355,48 +2278,15 @@ async function pollCostHeatmap() {
     }
   } catch(e) {}
 
+  // Poll segmentation contours
+  _updateSegContours();
+
   // Poll slope grid
   if (_mosaicInfo) {
     _updateSlopeGrid(_mosaicInfo);
   }
 }
 
-// ─── Quadrant summary (dynamic grid) ─────────────────────────────────────────
-function renderQuadrantSummary(data) {
-  const grid = data.grid || [];
-  const cls  = data.classifications || [];
-  const rows = grid.length;
-  const cols = rows > 0 ? grid[0].length : 0;
-  if (rows === 0 || cols === 0) return;
-
-  const midR = Math.floor(rows / 2), midC = Math.floor(cols / 2);
-  const quads = [
-    { name: 'NW', rMin:0, rMax:midR-1, cMin:0, cMax:midC-1 },
-    { name: 'NE', rMin:0, rMax:midR-1, cMin:midC, cMax:cols-1 },
-    { name: 'SW', rMin:midR, rMax:rows-1, cMin:0, cMax:midC-1 },
-    { name: 'SE', rMin:midR, rMax:rows-1, cMin:midC, cMax:cols-1 },
-  ];
-  const tbody = el('quad-table-body');
-  tbody.innerHTML = '';
-  for (const q of quads) {
-    let hazardCount = 0, shadowCount = 0, total = 0;
-    for (let r = q.rMin; r <= q.rMax; r++) {
-      for (let c = q.cMin; c <= q.cMax; c++) {
-        total++;
-        if (cls[r] && cls[r][c] === 'HAZARD') hazardCount++;
-        if (cls[r] && cls[r][c] === 'SHADOW') shadowCount++;
-      }
-    }
-    const shadowPct = total ? (shadowCount / total * 100).toFixed(0) : '--';
-    let risk = 'LOW';
-    if (hazardCount > 2 || shadowCount > 4) risk = 'HIGH';
-    else if (hazardCount > 0 || shadowCount > 2) risk = 'MODERATE';
-    const riskClass = 'risk-' + risk;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${q.name}</td><td>${hazardCount}</td><td>${shadowPct}%</td><td><span class="${riskClass} risk-badge">${risk}</span></td>`;
-    tbody.appendChild(tr);
-  }
-}
 
 // ─── Change Detection Before/After Slider ────────────────────────────────────
 let _changeData = null;
@@ -2418,109 +2308,6 @@ async function pollChanges() {
   } catch(e) {}
 }
 
-// ─── Shadow data ─────────────────────────────────────────────────────────────
-async function pollShadow() {
-  try {
-    const r = await fetch('/api/shadow_data');
-    if (!r.ok) return;
-    const d = await r.json();
-    const txt = el('shadow-summary-text');
-    if (txt) {
-      const pct = d.shadow_pct != null ? fmtNum(d.shadow_pct,1) + '%' : '--';
-      const allRegions = d.regions || [];
-      const shadows = allRegions.filter(r => r.type === 'shadow');
-      const objects = allRegions.filter(r => r.type === 'object');
-      const largest = shadows.length ? shadows.reduce((a,b) => a.area_px > b.area_px ? a : b).area_px + ' px' : '--';
-      let summary = `Shadow: ${pct} | ${shadows.length} shadow region(s) | Largest: ${largest}`;
-      if (objects.length) summary += ` | ${objects.length} dark object(s)`;
-      txt.textContent = summary;
-    }
-  } catch(e) {}
-}
-
-async function pollYolo() {
-  try {
-    // Fetch detections data
-    const r = await fetch('/api/yolo_detections');
-    if (!r.ok) return;
-    const d = await r.json();
-    const summary = d.summary || {};
-    const fused = d.fused_classifications || [];
-
-    // Update model badge
-    const badge = el('yolo-model-badge');
-    if (badge) {
-      const st = el('yolo-status-state');
-      const m = d.summary || {};
-      // Get model from mission state
-      const sr = await fetch('/api/status');
-      const sd = await sr.json();
-      const ml = (sd.mission || {}).ml_detection || {};
-      const model = ml.model || 'none';
-      if (model === 'lunar_yolov8') {
-        badge.textContent = 'LUNAR';
-        badge.style.background = '#00d4ff33';
-        badge.style.color = '#00d4ff';
-      } else if (model.includes('coco')) {
-        badge.textContent = 'COCO';
-        badge.style.background = '#ff990033';
-        badge.style.color = '#ff9900';
-      } else {
-        badge.textContent = '--';
-      }
-    }
-
-    // Update summary text
-    const sumEl = el('yolo-summary');
-    if (sumEl) {
-      const total = summary.total_detections || 0;
-      const craters = summary.craters_detected || 0;
-      const boulders = summary.boulders_detected || 0;
-      const agreeRate = summary.cv_agreement_rate != null ? (summary.cv_agreement_rate * 100).toFixed(0) : '--';
-      if (total > 0) {
-        sumEl.innerHTML = `<span style="color:var(--bright);">YOLO:</span> ${craters} crater(s), ${boulders} boulder(s) ` +
-          `| <span style="color:var(--bright);">CV Agreement:</span> ${agreeRate}%`;
-        sumEl.style.color = 'var(--text)';
-      } else {
-        sumEl.textContent = 'No detections yet';
-        sumEl.style.color = 'var(--dim)';
-      }
-    }
-
-    // Update annotated image
-    const imgEl = el('img-yolo');
-    const phEl = el('img-yolo-ph');
-    const imgR = await fetch('/api/yolo_annotated');
-    if (imgR.ok && imgEl) {
-      const blob = await imgR.blob();
-      imgEl.src = URL.createObjectURL(blob);
-      imgEl.style.display = '';
-      if (phEl) phEl.style.display = 'none';
-    }
-
-    // Build detections list
-    const listEl = el('yolo-detections-list');
-    if (listEl && fused.length > 0) {
-      let html = '';
-      for (const f of fused) {
-        const cell = f.cell || [];
-        const agree = f.agreement;
-        const agreeIcon = agree ? '<span style="color:#44cc44;">&#10003;</span>' : '<span style="color:#ff4444;">&#10007;</span>';
-        const dets = (f.yolo_detections || []).map(d =>
-          `${d.class} ${(d.confidence * 100).toFixed(0)}%`
-        ).join(', ') || 'none';
-        html += `<div style="margin-bottom:3px;border-bottom:1px solid var(--border);padding-bottom:2px;">` +
-          `<span style="color:var(--accent);">(${cell[0]},${cell[1]})</span> ` +
-          `CV: <b>${f.classical_classification}</b> → Fused: <b style="color:var(--bright);">${f.fused_classification}</b> ` +
-          `(${(f.fused_confidence * 100).toFixed(0)}%) ` +
-          `${agreeIcon} | ML: ${dets}</div>`;
-      }
-      listEl.innerHTML = html;
-    } else if (listEl) {
-      listEl.innerHTML = '';
-    }
-  } catch(e) {}
-}
 
 function renderChangeDetection(data) {
   const events = data.events || [];
@@ -2529,6 +2316,40 @@ function renderChangeDetection(data) {
   const phEl = el('change-slider-ph');
   const eventsEl = el('change-events-list');
   const warningEl = el('change-low-conf-warning');
+  const countsEl = el('change-counts');
+  const countsBody = el('change-counts-body');
+  const summaryEl = el('change-summary');
+
+  // ── Object count comparison ──
+  const countChanges = data.object_count_changes || [];
+  const countsBefore = data.counts_before || {};
+  const countsAfter = data.counts_after || {};
+  const hasCountData = Object.keys(countsBefore).length > 0 || Object.keys(countsAfter).length > 0;
+
+  if (hasCountData) {
+    countsEl.style.display = '';
+    const allClasses = new Set([...Object.keys(countsBefore), ...Object.keys(countsAfter)]);
+    let html = '';
+    for (const cls of [...allClasses].sort()) {
+      const nb = countsBefore[cls] || 0;
+      const na = countsAfter[cls] || 0;
+      const diff = na - nb;
+      const diffStr = diff > 0 ? `<span style="color:#00cc66">+${diff}</span>` :
+                      diff < 0 ? `<span style="color:#ff4444">${diff}</span>` :
+                      '<span style="color:var(--dim)">0</span>';
+      const maxCount = Math.max(nb, na, 1);
+      html += `<div class="change-count-row">
+        <span class="change-count-class">${cls}</span>
+        <span class="change-count-num">${nb}</span>
+        <span style="color:var(--dim)">&rarr;</span>
+        <span class="change-count-num">${na}</span>
+        <span style="min-width:40px">${diffStr}</span>
+      </div>`;
+    }
+    countsBody.innerHTML = html || '<span style="color:var(--dim)">No hazard objects detected in either pass</span>';
+  } else {
+    countsEl.style.display = 'none';
+  }
 
   if (!events.length) {
     tabsEl.innerHTML = '';
@@ -2536,8 +2357,16 @@ function renderChangeDetection(data) {
     phEl.style.display = '';
     eventsEl.innerHTML = '';
     warningEl.style.display = 'none';
+    summaryEl.style.display = 'none';
     return;
   }
+
+  // Summary
+  const typeMap = {};
+  for (const e of events) { typeMap[e.type] = (typeMap[e.type] || 0) + 1; }
+  const parts = Object.entries(typeMap).map(([t, n]) => `${n} ${t}`);
+  summaryEl.style.display = '';
+  summaryEl.textContent = `${events.length} change event(s): ${parts.join(', ')}`;
 
   // Group events by cell
   const cellMap = {};
@@ -2548,7 +2377,6 @@ function renderChangeDetection(data) {
   }
   const cellKeys = Object.keys(cellMap);
 
-  // Auto-select first cell if none selected
   if (!_changeSelectedCell || !cellMap[_changeSelectedCell]) {
     _changeSelectedCell = cellKeys[0];
   }
@@ -2559,12 +2387,11 @@ function renderChangeDetection(data) {
     const [r, c] = key.split(',');
     const btn = document.createElement('button');
     btn.className = 'change-cell-tab' + (key === _changeSelectedCell ? ' active' : '');
-    btn.textContent = `Cell (${r},${c})`;
+    btn.textContent = `Cell (${r},${c}) [${cellMap[key].length}]`;
     btn.onclick = () => { _changeSelectedCell = key; renderChangeDetection(data); };
     tabsEl.appendChild(btn);
   }
 
-  // Get events for selected cell
   const cellEvents = cellMap[_changeSelectedCell] || [];
   const firstEvt = cellEvents[0];
 
@@ -2590,23 +2417,33 @@ function renderChangeDetection(data) {
   } else {
     sliderEl.style.display = 'none';
     phEl.style.display = '';
-    phEl.innerHTML = '<div class="cs-placeholder">Images not available for this cell — change map only</div>';
+    phEl.innerHTML = '<div class="cs-placeholder">Images not available for this cell</div>';
   }
 
   // Render event cards
   eventsEl.innerHTML = '';
+  const _typeClass = {
+    'new_object': 'evt-new', 'disappeared': 'evt-disappeared',
+    'moved': 'evt-moved', 'reclassified': 'evt-reclassified',
+  };
+  const _typeLabel = {
+    'new_object': 't-new', 'disappeared': 't-disappeared',
+    'moved': 't-moved', 'reclassified': 't-reclassified',
+    'darkened': 't-pixel', 'brightened': 't-pixel',
+  };
+
   for (const evt of cellEvents) {
     const card = document.createElement('div');
-    card.className = 'change-event-card';
+    card.className = 'change-event-card ' + (_typeClass[evt.type] || '');
     const confPct = ((evt.confidence || 0) * 100).toFixed(0);
-    const confColor = evt.confidence >= 0.8 ? '#00ff88' : evt.confidence >= 0.7 ? '#ffaa00' : '#ff4444';
+    const typeCls = _typeLabel[evt.type] || 't-pixel';
+    const dispStr = evt.displacement_px ? ` (${evt.displacement_px}px)` : '';
     card.innerHTML = `
-      <span class="ce-id">&Delta;${evt.id}</span>
-      <span>Cell (${(evt.cell||[0,0]).join(',')})&nbsp;</span>
-      <span class="ce-detail">${evt.area_px} px&sup2; ${evt.type}</span>
-      <span class="ce-conf" style="color:${confColor}">Confidence: ${confPct}%</span>
+      <span class="ce-id" style="color:inherit">#${evt.id}</span>
+      <span class="ce-type ${typeCls}">${evt.type}</span>
+      <span class="ce-detail">${evt.object_class || '?'}${dispStr} — ${evt.description || ''}</span>
+      <span class="ce-conf" style="color:var(--dim)">${evt.method === 'object_matching' ? 'YOLO' : 'pixel'} ${confPct}%</span>
     `;
-    // Click to highlight this event's bbox
     card.onclick = () => {
       document.querySelectorAll('.change-event-card').forEach(c => c.classList.remove('active-event'));
       card.classList.add('active-event');
@@ -2615,14 +2452,7 @@ function renderChangeDetection(data) {
     eventsEl.appendChild(card);
   }
 
-  // Low confidence warning
-  const lowConf = cellEvents.filter(e => (e.confidence || 1) < 0.7);
-  if (lowConf.length) {
-    warningEl.style.display = 'block';
-    warningEl.innerHTML = '&#9888; Low alignment confidence — results may be unreliable';
-  } else {
-    warningEl.style.display = 'none';
-  }
+  warningEl.style.display = 'none';
 }
 
 function updateSliderPosition(pct) {
@@ -2749,213 +2579,6 @@ function checkChangeRouteImpact(statusData, routeData) {
   }
 }
 
-// ─── Coverage canvas (animated) ──────────────────────────────────────────────
-let _covPassData = null;       // 8x8 array from cost_grid.json pass_data
-let _covChangeCells = [];      // [[r,c], ...] from cost_grid.json change_cells
-let _covAnimStart = null;      // performance.now() when animation started
-let _covAnimRunning = false;
-let _covAnimFrame = null;
-const COV_ANIM_DUR = 3500;    // 3.5s total (1s per pass + 0.5s for change pulse)
-const COV_ROWS = 8, COV_COLS = 8;
-const COL_LABELS = ['A','B','C','D','E','F','G','H'];
-const COV_MARGIN_LEFT = 20, COV_MARGIN_TOP = 16;
-
-async function pollCoverage() {
-  // Coverage now comes from cost_grid pass_data
-  try {
-    const r = await fetch('/api/cost_grid');
-    if (!r.ok) return;
-    const d = await r.json();
-    _covPassData = d.pass_data || null;
-    _covChangeCells = d.change_cells || [];
-    if (_covFirstLoad && _covPassData) {
-      _covFirstLoad = false;
-      startCoverageAnim();
-    } else if (!_covAnimRunning) {
-      drawCoverageFinal();
-    }
-  } catch(e) {}
-}
-
-function drawCoverageFinal() {
-  if (!_covPassData) return;
-  const canvas = el('coverage-canvas');
-  const ctx = canvas.getContext('2d');
-  const cw = canvas.width, ch = canvas.height;
-  const gridW = cw - COV_MARGIN_LEFT, gridH = ch - COV_MARGIN_TOP;
-  const cellW = gridW / COV_COLS, cellH = gridH / COV_ROWS;
-  const ox = COV_MARGIN_LEFT, oy = COV_MARGIN_TOP;
-
-  ctx.fillStyle = '#0a0e17';
-  ctx.fillRect(0, 0, cw, ch);
-
-  // Labels
-  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 9px monospace';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let c = 0; c < COV_COLS; c++) ctx.fillText(COL_LABELS[c], ox + c*cellW + cellW/2, oy/2);
-  ctx.textAlign = 'right';
-  for (let r = 0; r < COV_ROWS; r++) ctx.fillText(String(r+1), ox - 4, oy + r*cellH + cellH/2);
-
-  // Cells
-  for (let r = 0; r < COV_ROWS; r++) {
-    for (let c = 0; c < COV_COLS; c++) {
-      const pass = _covPassData[r][c];
-      const x = ox + c*cellW, y = oy + r*cellH;
-      if (pass > 0) {
-        ctx.fillStyle = '#00ff88';
-        ctx.globalAlpha = 1.0;
-        ctx.fillRect(x, y, cellW - 1, cellH - 1);
-        ctx.globalAlpha = 1.0;
-      } else {
-        ctx.fillStyle = '#1e2233';
-        ctx.fillRect(x, y, cellW - 1, cellH - 1);
-      }
-    }
-  }
-
-  // Change cells: orange outline
-  for (const [cr, cc] of _covChangeCells) {
-    const x = ox + cc*cellW, y = oy + cr*cellH;
-    ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2;
-    ctx.strokeRect(x + 2, y + 2, cellW - 5, cellH - 5);
-  }
-
-  // Grid lines
-  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1; ctx.globalAlpha = 1;
-  for (let i = 0; i <= COV_ROWS; i++) {
-    ctx.beginPath(); ctx.moveTo(ox, oy + i*cellH); ctx.lineTo(ox + gridW, oy + i*cellH); ctx.stroke();
-  }
-  for (let j = 0; j <= COV_COLS; j++) {
-    ctx.beginPath(); ctx.moveTo(ox + j*cellW, oy); ctx.lineTo(ox + j*cellW, oy + gridH); ctx.stroke();
-  }
-
-  // Update badge
-  let filled = 0;
-  for (let r = 0; r < COV_ROWS; r++)
-    for (let c = 0; c < COV_COLS; c++)
-      if (_covPassData[r][c] > 0) filled++;
-  el('coverage-pct-badge').textContent = Math.round(filled / (COV_ROWS*COV_COLS) * 100) + '%';
-
-  // Timeline: all segments active, playhead at end
-  for (let i = 1; i <= 3; i++) {
-    const seg = el('cov-tl-p' + i);
-    if (seg) seg.classList.add('active');
-  }
-  const ph = el('cov-tl-playhead');
-  if (ph) ph.style.left = 'calc(100% - 8px)';
-}
-
-function startCoverageAnim() {
-  if (!_covPassData || _covAnimRunning) return;
-  _covAnimRunning = true;
-  _covAnimStart = performance.now();
-
-  // Reset timeline
-  for (let i = 1; i <= 3; i++) el('cov-tl-p' + i).classList.remove('active');
-  el('cov-tl-playhead').style.left = '0px';
-
-  if (_covAnimFrame) cancelAnimationFrame(_covAnimFrame);
-  _covAnimFrame = requestAnimationFrame(covAnimLoop);
-}
-
-function covAnimLoop(now) {
-  if (!_covAnimStart) { _covAnimRunning = false; return; }
-  const elapsed = now - _covAnimStart;
-  const t = Math.min(1, elapsed / COV_ANIM_DUR);
-
-  const canvas = el('coverage-canvas');
-  const ctx = canvas.getContext('2d');
-  const cw = canvas.width, ch = canvas.height;
-  const gridW = cw - COV_MARGIN_LEFT, gridH = ch - COV_MARGIN_TOP;
-  const cellW = gridW / COV_COLS, cellH = gridH / COV_ROWS;
-  const ox = COV_MARGIN_LEFT, oy = COV_MARGIN_TOP;
-
-  ctx.fillStyle = '#0a0e17';
-  ctx.fillRect(0, 0, cw, ch);
-
-  // Labels
-  ctx.fillStyle = '#6b7280'; ctx.font = 'bold 9px monospace';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let c = 0; c < COV_COLS; c++) ctx.fillText(COL_LABELS[c], ox + c*cellW + cellW/2, oy/2);
-  ctx.textAlign = 'right';
-  for (let r = 0; r < COV_ROWS; r++) ctx.fillText(String(r+1), ox - 4, oy + r*cellH + cellH/2);
-
-  // Which pass are we in? 0-1s=pass1, 1-2s=pass2, 2-3s=pass3, 3-3.5s=change pulse
-  const passTime = COV_ANIM_DUR * (3/3.5);  // 3s for passes
-  const currentPassFrac = Math.min(3, (elapsed / passTime) * 3); // 0..3
-  const currentPass = Math.floor(currentPassFrac) + 1; // 1,2,3
-  const passFade = currentPassFrac - Math.floor(currentPassFrac); // 0..1 within pass
-
-  // Update timeline segments
-  for (let i = 1; i <= 3; i++) {
-    const seg = el('cov-tl-p' + i);
-    if (i < currentPass) seg.classList.add('active');
-    else if (i === currentPass && currentPassFrac < 3) seg.classList.add('active');
-    else seg.classList.remove('active');
-  }
-
-  // Update playhead
-  const ph = el('cov-tl-playhead');
-  const tlWidth = el('cov-timeline').offsetWidth;
-  ph.style.left = Math.min(tlWidth - 8, t * tlWidth) + 'px';
-
-  // Draw cells
-  for (let r = 0; r < COV_ROWS; r++) {
-    for (let c = 0; c < COV_COLS; c++) {
-      const pass = _covPassData[r][c];
-      const x = ox + c*cellW, y = oy + r*cellH;
-
-      if (pass === 0 || pass > currentPass) {
-        // Unsurveyed
-        ctx.fillStyle = '#1e2233'; ctx.globalAlpha = 1;
-        ctx.fillRect(x, y, cellW - 1, cellH - 1);
-      } else if (pass === currentPass && currentPassFrac < 3) {
-        // Currently fading in
-        const alpha = 0.4 + 0.6 * Math.min(1, passFade * 2); // quick fade
-        ctx.fillStyle = '#00ff88'; ctx.globalAlpha = alpha;
-        ctx.fillRect(x, y, cellW - 1, cellH - 1);
-        ctx.globalAlpha = 1;
-      } else {
-        // Already revealed
-        const passAlpha = pass === 1 ? 0.4 : pass === 2 ? 0.7 : 1.0;
-        ctx.fillStyle = '#00ff88'; ctx.globalAlpha = passAlpha;
-        ctx.fillRect(x, y, cellW - 1, cellH - 1);
-        ctx.globalAlpha = 1;
-      }
-    }
-  }
-
-  // After all passes shown, pulse change cells
-  if (elapsed > passTime) {
-    const pulse = (Math.sin((elapsed - passTime) / 150) + 1) / 2;
-    for (const [cr, cc] of _covChangeCells) {
-      const x = ox + cc*cellW, y = oy + cr*cellH;
-      ctx.fillStyle = `rgba(255,149,0,${0.3 + 0.4 * pulse})`;
-      ctx.fillRect(x, y, cellW - 1, cellH - 1);
-      ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2;
-      ctx.strokeRect(x + 2, y + 2, cellW - 5, cellH - 5);
-    }
-  }
-
-  // Grid lines (always on top)
-  ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth = 1; ctx.globalAlpha = 1;
-  for (let i = 0; i <= COV_ROWS; i++) {
-    ctx.beginPath(); ctx.moveTo(ox, oy + i*cellH); ctx.lineTo(ox + gridW, oy + i*cellH); ctx.stroke();
-  }
-  for (let j = 0; j <= COV_COLS; j++) {
-    ctx.beginPath(); ctx.moveTo(ox + j*cellW, oy); ctx.lineTo(ox + j*cellW, oy + gridH); ctx.stroke();
-  }
-
-  if (t < 1) {
-    _covAnimFrame = requestAnimationFrame(covAnimLoop);
-  } else {
-    _covAnimRunning = false;
-    drawCoverageFinal();
-  }
-}
-
-// Auto-start animation on first data load
-let _covFirstLoad = true;
 
 // ─── Quality log ─────────────────────────────────────────────────────────────
 async function pollQuality() {
@@ -3049,7 +2672,7 @@ function cmdExposure(btn) {
   sendCmd({cmd: 'adjust_exposure', exposure_us: us}, btn);
 }
 
-// ─── LLM ─────────────────────────────────────────────────────────────────────
+// ─── Ollama: plain Q&A from mission_state (no advisor pipeline) ──────────────
 async function sendLLM() {
   const q = el('llm-input').value.trim();
   if (!q) return;
@@ -3067,9 +2690,49 @@ async function sendLLM() {
   }
 }
 
+function renderBriefing(d) {
+  const deterministic = d.deterministic || {};
+  el('briefing-headline').textContent = deterministic.headline || 'No mission briefing yet.';
+  const bullets = deterministic.bullets || [];
+  el('briefing-bullets').innerHTML = bullets.map(b => `<li>${b}</li>`).join('');
+  el('briefing-llm').textContent = d.llm || '';
+}
+
+function renderTaskQueue(d) {
+  const tasks = d.tasks || [];
+  const feed = d.science_feed || [];
+  el('task-queue').innerHTML = tasks.map(task => {
+    const reason = (task.reasons || []).join('; ');
+    return `<li><strong>${task.cmd}</strong> cell (${task.row},${task.col}) score=${(task.score ?? 0).toFixed(3)} ` +
+      `<button class="task-btn" type="button" onclick="applyTask('${task.cmd}', ${task.row}, ${task.col})">SEND</button><br>` +
+      `<span>${reason}</span></li>`;
+  }).join('') || '<li>No queued tasks.</li>';
+  el('science-feed').innerHTML = feed.slice(0, 6).map(item => {
+    const cell = Array.isArray(item.cell) ? `(${item.cell[0]},${item.cell[1]})` : '--';
+    return `<li><strong>${item.source || 'event'}</strong> ${item.filename || '--'} ${cell}<br>` +
+      `<span>${item.notes || ''}</span></li>`;
+  }).join('') || '<li>No science products yet.</li>';
+}
+
+async function loadMissionIntel(withLLM = false) {
+  try {
+    const [briefResp, tasksResp] = await Promise.all([
+      fetch('/api/mission_briefing' + (withLLM ? '?llm=1' : '')),
+      fetch('/api/task_queue'),
+    ]);
+    renderBriefing(await briefResp.json());
+    renderTaskQueue(await tasksResp.json());
+  } catch (e) {
+    el('briefing-headline').textContent = 'Mission intelligence unavailable.';
+  }
+}
+
+function applyTask(cmd, row, col) {
+  sendCmd({cmd, row, col});
+}
+
 // ─── Poll loops ──────────────────────────────────────────────────────────────
 function pollImages() {
-  updateImg('img-latest',           'img-latest-ph',           '/api/latest_image');
   updateImg('img-hazard',           'img-hazard-ph',           '/api/hazard_map');
   // Change detection now uses the before/after slider, not a static image
   updateImg('img-route-comparison', 'img-route-comparison-ph', '/api/route_comparison_image');
@@ -3077,27 +2740,36 @@ function pollImages() {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// Initialize mosaic map immediately (it's on the main hub page now)
+setTimeout(function() {
+  ensureLeafletMap();
+  // Force-load mosaic image on startup
+  fetch('/api/mosaic_info').then(r => r.json()).then(d => {
+    if (d && d.image_count > 0) {
+      _mosaicInfo = d;
+      _mosaicLastCount = d.image_count;
+      _updateMosaicImage(d);
+    }
+  }).catch(() => {});
+}, 200);
+
 pollStatus();
 pollImages();
-pollCoverage();
 pollQuality();
 pollLog();
 pollRoutes();
 pollCostHeatmap();
 pollChanges();
-pollShadow();
-pollYolo();
+loadMissionIntel();
 
 setInterval(pollStatus,      POLL_STATUS_MS);
 setInterval(pollImages,      POLL_IMAGES_MS);
-setInterval(pollCoverage,    POLL_COVERAGE_MS);
 setInterval(pollQuality,     POLL_QUALITY_MS);
 setInterval(pollLog,         POLL_LOG_MS);
 setInterval(pollRoutes,      POLL_ROUTES_MS);
+setInterval(loadMissionIntel, 8000);
 setInterval(pollCostHeatmap, POLL_HEATMAP_MS);
 setInterval(pollChanges,     POLL_CHANGES_MS);
-setInterval(pollShadow,      POLL_HEATMAP_MS);
-setInterval(pollYolo,        POLL_HEATMAP_MS);
 
 // ── Live Downlink SSE ──
 (function initDownlinkSSE() {

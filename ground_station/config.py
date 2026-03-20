@@ -6,7 +6,7 @@
 LISTEN_PORT = 5000
 COMMAND_PORT = 5001
 LISTEN_HOST = "0.0.0.0"
-CUBESAT_IP = "192.168.1.229"       # Fill in: CubeSat's real IP on the shared network
+CUBESAT_IP = "127.0.0.1"       # Fill in: CubeSat's real IP on the shared network
 
 # === STORAGE ===
 RECEIVED_DIR = "data/received_images"
@@ -29,6 +29,7 @@ COST_SAFE = 1
 COST_MODERATE = 5
 COST_SHADOW = 15
 COST_HAZARD = 20
+COST_CRATER = 500                  # Near-impassable — only traverse if no other path exists
 COST_IMPASSABLE = 999
 
 # === HAZARD CLASSIFICATION THRESHOLDS ===
@@ -59,7 +60,7 @@ SEG_COST_MAP = {                   # Semantic label → traversal cost for A* ro
     1: COST_SAFE,                  # SAND — safe
     2: COST_SAFE,                  # PLAIN_SURFACE — safe
     3: COST_SHADOW,                # SHADOW — uncertain, high cost
-    4: COST_IMPASSABLE,             # CRATER — impassable (same as boulder)
+    4: COST_CRATER,                  # CRATER — near-impassable, last resort only
     5: COST_IMPASSABLE,            # BOULDER — impassable
 }
 
@@ -98,11 +99,12 @@ LANDING_MIN_RADIUS_CM = 5.0          # Minimum safe zone radius around landing p
 LANDING_CANDIDATE_STRIDE = 2         # Sample every Nth fine grid cell (performance tuning)
 LANDING_TOP_K = 3                    # Return top K candidates
 LANDING_WEIGHTS = {                  # Scoring weights (sum ≈ 1.0)
-    "hazard_clearance": 0.30,
-    "zone_size": 0.20,
-    "confidence": 0.15,
-    "flatness": 0.20,
+    "hazard_clearance": 0.25,
+    "zone_size": 0.15,
+    "confidence": 0.10,
+    "flatness": 0.15,
     "route_viability": 0.15,
+    "smoothness": 0.20,              # Terrain roughness — prefer smooth landing zones
 }
 LANDING_MIN_CLEARANCE_CM = 3.0       # Hard reject if nearest hazard < this
 
@@ -113,5 +115,15 @@ CNN_BLEND_WEIGHT = 0.4              # final = alpha*CNN + (1-alpha)*classical
 CNN_ENABLED = True                  # model trained on existing data
 CNN_BATCH_SIZE = 32
 
-# === LLM (optional) ===
+# === LLM (optional — mission Q&A via Ollama only; no advisor pipeline) ===
 LLM_MODEL = "llama3.2"
+LLM_TIMEOUT_SEC = 60
+
+# === MISSION INTELLIGENCE ===
+MISSION_MAX_TASKS = 5
+MISSION_FEED_LIMIT = 25
+MISSION_WEIGHT_COVERAGE = 0.30
+MISSION_WEIGHT_UNCERTAINTY = 0.25
+MISSION_WEIGHT_CHANGE = 0.20
+MISSION_WEIGHT_ROUTE = 0.15
+MISSION_WEIGHT_HAZARD = 0.10

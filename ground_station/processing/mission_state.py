@@ -16,6 +16,13 @@ from datetime import datetime, timezone
 
 import config
 from processing.hazard_classifier import SHADOW
+from processing.mission_intelligence import (
+    build_briefing,
+    build_mission_metrics,
+    build_task_queue,
+    cell_key,
+    update_cell_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +96,13 @@ class MissionState:
                 self._state["coverage"]["pct"] = round(
                     cells_surveyed / cells_total * 100.0, 1
                 )
+            self._refresh_mission_intelligence_locked()
+
+    def record_grid_shape(self, rows: int, cols: int):
+        with self._lock:
+            self._state["coverage"]["rows"] = int(rows)
+            self._state["coverage"]["cols"] = int(cols)
+            self._refresh_mission_intelligence_locked()
 
     def record_change_result(self, change_summary: dict, change_events: list):
         """Call after ChangeDetector.detect() — only when events are found."""
@@ -115,6 +129,7 @@ class MissionState:
                 cells_list = ch["cells_with_changes"]
                 if list(cell) not in cells_list:
                     cells_list.append(list(cell))
+            self._refresh_mission_intelligence_locked()
 
     def record_route_result(self, route_result: dict):
         """Call after RoutePlanner.plan() — overwrites route section (latest plan)."""
@@ -129,16 +144,18 @@ class MissionState:
                 "shadow_exposure_pct": route_result.get("shadow_exposure_pct", 0.0),
                 "status":              route_result.get("status", "unknown"),
             }
+            self._refresh_mission_intelligence_locked()
 
     def record_route_comparison(self, routes_dict: dict):
         """Call after RoutePlanner.plan_multiple_routes() — stores all 3 routes."""
         with self._lock:
             r = self._state["routes"]
-            for name in ("fastest", "safest", "balanced"):
+            for name in ("fastest", "safest", "balanced", "ppo"):
                 if name in routes_dict:
                     r[name] = routes_dict[name]
             if r["selected"] is None:
                 r["selected"] = "safest"
+            self._refresh_mission_intelligence_locked()
 
     def record_yolo_result(self, model_name: str, detections_per_cell: dict, fused_results: list):
         """Call after YOLODetector + fusion for each image."""
@@ -179,6 +196,7 @@ class MissionState:
                 )
             if not success:
                 dl["failed_transfers"] += 1
+            self._refresh_mission_intelligence_locked()
 
     def record_retransmit_request(self):
         with self._lock:
@@ -191,40 +209,43 @@ class MissionState:
             ul["commands_sent"] += 1
             if acked:
                 ul["commands_acked"] += 1
+            self._refresh_mission_intelligence_locked()
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # AI Advisor decision log
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def record_advisor_decision(self, decision: dict):
-        """Append an AI advisor decision to the decision log."""
+    def record_cell_observation(self, observation: dict):
+        """Update the per-cell fused terrain estimate from one processed image."""
         with self._lock:
-            self._state["decision_log"].append(decision)
+            row, col = observation["grid_cell"]
+            key = cell_key(row, col)
+            existing = self._state["cell_states"].get(key)
+            updated = update_cell_state(existing, observation)
+            self._state["cell_states"][key] = updated
+            self._append_science_feed_locked({
+                "source": "ground_pipeline",
+                "filename": observation.get("filename", ""),
+                "cell": [row, col],
+                "science_value": observation.get("science_value"),
+                "hazard_class": observation.get("hazard_class"),
+                "change_events": observation.get("change_events", 0),
+                "timestamp": observation.get("timestamp"),
+                "notes": observation.get("task_reason") or "",
+            })
+            self._refresh_mission_intelligence_locked()
 
-    def resolve_decision(self, decision_id: str, action: str, note: str = ""):
-        """Resolve a pending decision: approve, override, or defer."""
+    def record_science_summary(self, summary: dict):
         with self._lock:
-            for entry in self._state["decision_log"]:
-                if entry.get("id") == decision_id:
-                    entry["status"] = action.upper()
-                    entry["operator_action"] = action
-                    entry["operator_note"] = note
-                    entry["resolved_at"] = datetime.now(timezone.utc).isoformat()
-                    return True
-        return False
-
-    def get_decision_log(self) -> list:
-        """Return a copy of the decision log."""
-        with self._lock:
-            return list(self._state["decision_log"])
-
-    def get_pending_decisions(self) -> list:
-        """Return only PENDING_HUMAN_APPROVAL decisions."""
-        with self._lock:
-            return [
-                d for d in self._state["decision_log"]
-                if d.get("status") == "PENDING_HUMAN_APPROVAL"
-            ]
+            self._state["science_products"]["summaries_received"] += 1
+            self._state["science_products"]["last_summary"] = summary
+            self._append_science_feed_locked({
+                "source": "flight_summary",
+                "filename": summary.get("filename", ""),
+                "cell": summary.get("grid_cell"),
+                "science_value": summary.get("science_value"),
+                "hazard_class": summary.get("hazard_hint", "UNKNOWN"),
+                "change_events": summary.get("change_hint", 0),
+                "timestamp": summary.get("timestamp"),
+                "notes": ", ".join(summary.get("science_reasons", [])),
+            })
+            self._refresh_mission_intelligence_locked()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Persistence
@@ -270,6 +291,13 @@ class MissionState:
             # (Best effort — cells_filled count is preserved even if exact set isn't)
             if self._state["coverage"]["cells_filled"] > 0 and not self._state["_cells_covered"]:
                 self._state["_cells_covered"] = set()
+            for key in self._state.get("cell_states", {}):
+                try:
+                    row, col = (int(v) for v in key.split(",", 1))
+                    self._state["_cells_covered"].add((row, col))
+                except Exception:
+                    pass
+            self._refresh_mission_intelligence_locked()
             logger.info("MissionState: resumed from existing mission_state.json")
         except Exception as e:
             logger.warning(f"MissionState: could not load mission_state.json: {e} — starting fresh")
@@ -287,6 +315,16 @@ class MissionState:
             snapshot = {k: v for k, v in self._state.items() if not k.startswith("_")}
             snapshot["last_updated"] = self._state["last_updated"]
         return snapshot
+
+    def _append_science_feed_locked(self, entry: dict):
+        feed = self._state["science_feed"]
+        feed.insert(0, entry)
+        del feed[config.MISSION_FEED_LIMIT:]
+
+    def _refresh_mission_intelligence_locked(self):
+        self._state["mission_metrics"] = build_mission_metrics(self._state)
+        self._state["task_queue"] = build_task_queue(self._state)
+        self._state["mission_briefing"] = build_briefing(self._state)
 
     # ─────────────────────────────────────────────────────────────────────────
     # State schema
@@ -308,6 +346,8 @@ class MissionState:
                 "cells_filled": 0,
                 "cells_total": 0,  # dynamic — updated by MosaicGrid
                 "pct": 0.0,
+                "rows": 0,
+                "cols": 0,
             },
             "hazards": {
                 "safe": 0,
@@ -336,6 +376,7 @@ class MissionState:
                 "fastest": None,
                 "safest": None,
                 "balanced": None,
+                "ppo": None,
                 "selected": None,
                 "constrained": None,
             },
@@ -358,7 +399,19 @@ class MissionState:
                 "cv_agreement_rate": 1.0,
                 "detections_per_cell": {},
             },
-            "decision_log": [],
+            "cell_states": {},
+            "task_queue": [],
+            "mission_metrics": {},
+            "mission_briefing": {
+                "headline": "No observations yet.",
+                "bullets": [],
+                "generated_at": "",
+            },
+            "science_products": {
+                "summaries_received": 0,
+                "last_summary": {},
+            },
+            "science_feed": [],
             # Internal — not written to JSON
             "_cubesat_scores": [],
             "_cells_covered": set(),

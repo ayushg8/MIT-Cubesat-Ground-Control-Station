@@ -30,6 +30,9 @@ NACK = b'\x15'  # ASCII NAK — GCS sends this if MD5 mismatch or decode failure
 #
 #   4. For type "telemetry": CubeSat sends the telemetry JSON as raw bytes
 #      (no chunking needed — ~500 bytes, well under one chunk).
+#   4b. For type "science_summary": CubeSat sends a compact JSON summary for a
+#       capture or queued observation. These packets are small and are sent
+#       ahead of the full image when bandwidth is tight.
 #
 #   5. GCS verifies MD5, then sends ACK or NACK byte.
 #
@@ -75,6 +78,11 @@ NACK = b'\x15'  # ASCII NAK — GCS sends this if MD5 mismatch or decode failure
 #
 #   {"cmd": "cell", "row": R, "col": C}
 #       → Set the next grid cell to image (replaces set_cell for real-time control)
+#   {"cmd": "observe_cell", "row": R, "col": C, "reason": "..."}
+#       → High-priority first-look observation task from the GCS
+#
+#   {"cmd": "revisit_cell", "row": R, "col": C, "reason": "..."}
+#       → Revisit/confirm task from the GCS for uncertainty or change follow-up
 #
 #   {"cmd": "reset_mission"}
 #       → Reset pass counter, clear coverage/queue/image index, start fresh

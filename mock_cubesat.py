@@ -46,6 +46,7 @@ VALID_CMDS = {
     "start_pass", "end_pass", "cell", "set_cell", "retransmit",
     "priority_cell", "adjust_exposure", "enter_safe_mode",
     "resume_normal", "status_request", "retry_downlink", "reset_mission",
+    "observe_cell", "revisit_cell",
 }
 
 
@@ -323,10 +324,13 @@ def _apply_command(name, cmd):
         elif name == "status_request":
             print("[MOCK] Status request received — telemetry will be sent next cycle")
 
-        elif name in ("cell", "set_cell"):
+        elif name in ("cell", "set_cell", "observe_cell", "revisit_cell"):
             r, c = cmd.get("row", "?"), cmd.get("col", "?")
             _current_cell = [r, c]
-            print(f"[MOCK] Grid cell set to ({r},{c})")
+            if name in ("observe_cell", "revisit_cell"):
+                print(f"[MOCK] Mission task {name} → ({r},{c})")
+            else:
+                print(f"[MOCK] Grid cell set to ({r},{c})")
 
         elif name == "adjust_exposure":
             print(f"[MOCK] Exposure → {cmd.get('exposure_us')} µs")

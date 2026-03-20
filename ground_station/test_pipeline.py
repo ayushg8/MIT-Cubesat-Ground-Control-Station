@@ -198,8 +198,8 @@ def test_route_planner() -> dict | None:
         cost_grid   = np.full((config.GRID_ROWS, config.GRID_COLS),
                                config.COST_SAFE, dtype=np.int32)
         hazard_grid = [["SAFE"] * config.GRID_COLS for _ in range(config.GRID_ROWS)]
-        start = config.ROUTE_START
-        end   = config.ROUTE_END
+        start = config.ROUTE_START or (0, 0)
+        end   = config.ROUTE_END or (config.GRID_ROWS - 1, config.GRID_COLS - 1)
 
         result = planner.plan(cost_grid, hazard_grid, start, end)
 

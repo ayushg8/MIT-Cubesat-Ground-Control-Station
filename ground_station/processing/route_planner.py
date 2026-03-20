@@ -83,6 +83,15 @@ class RoutePlanner:
         Backward-compatible single-route plan. Internally calls plan_multiple_routes
         and returns the fastest route result in legacy format.
         """
+        if start is None or end is None:
+            return {
+                "path": [],
+                "total_cost": 0.0,
+                "path_length": 0,
+                "shadow_exposure_pct": 0.0,
+                "status": "no viable route",
+                "route_map_path": "",
+            }
         routes = self.plan_multiple_routes(cost_grid, hazard_grid, start, end, hazard_map_path)
         fastest = routes.get("fastest", {})
         raw_status = fastest.get("status", "no_path")

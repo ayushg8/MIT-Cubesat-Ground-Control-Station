@@ -18,6 +18,7 @@ import logging
 import os
 import socket
 import threading
+import time
 
 import config
 import protocol
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Callback set by server.py so the pipeline can be triggered without a circular import
 _pipeline_callback = None
 _pipeline_lock = threading.Lock()
+_io_lock = threading.RLock()
 _mission_state = None
 
 
@@ -44,6 +46,12 @@ def set_mission_state(ms):
     """Register mission_state so downlink bytes can be tracked."""
     global _mission_state
     _mission_state = ms
+
+
+def run_maintenance(callback):
+    """Run a maintenance operation while pausing receiver-side file I/O."""
+    with _io_lock:
+        return callback()
 
 
 def _recv_exact(sock, n):
@@ -114,146 +122,144 @@ def _handle_connection(conn, addr):
 
 def _handle_image(conn, filename, declared_size, declared_md5, metadata):
     """Receive image bytes, validate, save, trigger pipeline."""
-    logger.info(f"Receiving image '{filename}' ({declared_size:,} bytes)")
-    dl = get_downlink_state()
-    dl.start_transfer(filename, declared_size)
+    with _io_lock:
+        logger.info(f"Receiving image '{filename}' ({declared_size:,} bytes)")
+        dl = get_downlink_state()
+        dl.start_transfer(filename, declared_size)
 
-    try:
-        data = b""
-        while len(data) < declared_size:
-            chunk = conn.recv(min(4096, declared_size - len(data)))
-            if not chunk:
-                break
-            data += chunk
-            dl.update_progress(len(data))
-    except Exception as e:
-        logger.error(f"Error reading image bytes for '{filename}': {e}")
-        dl.set_status("failed", str(e))
-        conn.sendall(protocol.NACK)
-        return
+        try:
+            data = b""
+            while len(data) < declared_size:
+                chunk = conn.recv(min(4096, declared_size - len(data)))
+                if not chunk:
+                    break
+                data += chunk
+                dl.update_progress(len(data))
+        except Exception as e:
+            logger.error(f"Error reading image bytes for '{filename}': {e}")
+            dl.set_status("failed", str(e))
+            conn.sendall(protocol.NACK)
+            return
 
-    # Partial transfer detection
-    if len(data) < declared_size:
-        logger.warning(
-            f"Partial transfer '{filename}': {len(data):,} of {declared_size:,} bytes — discarded"
-        )
-        dl.set_status("failed", f"Partial: {len(data)}/{declared_size}")
-        conn.sendall(protocol.NACK)
-        return
+        if len(data) < declared_size:
+            logger.warning(
+                f"Partial transfer '{filename}': {len(data):,} of {declared_size:,} bytes — discarded"
+            )
+            dl.set_status("failed", f"Partial: {len(data)}/{declared_size}")
+            conn.sendall(protocol.NACK)
+            return
 
-    # Validate MD5 and size
-    dl.set_status("validating")
-    result = validate_transfer(data, declared_size, declared_md5, metadata)
-    if not result.valid:
-        logger.error(f"Validation failed for '{filename}': {result.reason}")
-        dl.set_status("failed", result.reason)
-        conn.sendall(protocol.NACK)
-        return
+        dl.set_status("validating")
+        result = validate_transfer(data, declared_size, declared_md5, metadata)
+        if not result.valid:
+            logger.error(f"Validation failed for '{filename}': {result.reason}")
+            dl.set_status("failed", result.reason)
+            conn.sendall(protocol.NACK)
+            return
 
-    # Save file
-    os.makedirs(config.RECEIVED_DIR, exist_ok=True)
-    save_path = os.path.join(config.RECEIVED_DIR, filename)
-    with open(save_path, "wb") as f:
-        f.write(data)
-    logger.info(f"Saved '{filename}' ({len(data):,} bytes)")
+        os.makedirs(config.RECEIVED_DIR, exist_ok=True)
+        save_path = os.path.join(config.RECEIVED_DIR, filename)
+        with open(save_path, "wb") as f:
+            f.write(data)
+        logger.info(f"Saved '{filename}' ({len(data):,} bytes)")
 
-    # Save sidecar metadata JSON
-    meta_filename = filename.replace(".jpg", "_meta.json")
-    meta_path = os.path.join(config.RECEIVED_DIR, meta_filename)
-    with open(meta_path, "w") as f:
-        json.dump(metadata, f, indent=2)
+        meta_filename = filename.replace(".jpg", "_meta.json")
+        meta_path = os.path.join(config.RECEIVED_DIR, meta_filename)
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f, indent=2)
 
-    conn.sendall(protocol.ACK)
-    logger.info(f"ACK sent for '{filename}'")
+        conn.sendall(protocol.ACK)
+        logger.info(f"ACK sent for '{filename}'")
 
-    # Ground-side quality check (different from CubeSat checks)
-    quality = run_ground_quality_check(save_path)
-    if not quality["passed"]:
-        logger.warning(
-            f"Ground quality flag for '{filename}': {quality['notes']}"
-        )
-    else:
-        logger.info(f"Ground quality OK for '{filename}'")
+        quality = run_ground_quality_check(save_path)
+        if not quality["passed"]:
+            logger.warning(f"Ground quality flag for '{filename}': {quality['notes']}")
+        else:
+            logger.info(f"Ground quality OK for '{filename}'")
 
-    # Trigger CV pipeline in background so we don't block the connection
-    dl.set_status("processing")
-    transfer_size = len(data)
-    transfer_start = dl._start_time  # captured at start_transfer
+        dl.set_status("processing")
+        transfer_size = len(data)
+        transfer_start = dl._start_time
 
-    if _pipeline_callback is not None:
-        def _run_pipeline(path, meta, qual):
-            with _pipeline_lock:
-                try:
-                    _pipeline_callback(path, meta, qual)
-                except Exception as e:
-                    logger.error(f"Pipeline callback failed for '{os.path.basename(path)}': {e}", exc_info=True)
-                finally:
-                    dl.set_status("complete")
-                    # Record cumulative downlink stats
-                    import time as _time
-                    duration = _time.monotonic() - transfer_start if transfer_start else 0
-                    if _mission_state:
-                        _mission_state.record_downlink_bytes(transfer_size, duration, True)
+        if _pipeline_callback is not None:
+            def _run_pipeline(path, meta, qual):
+                with _pipeline_lock:
+                    with _io_lock:
+                        try:
+                            _pipeline_callback(path, meta, qual)
+                        except Exception as e:
+                            logger.error(
+                                f"Pipeline callback failed for '{os.path.basename(path)}': {e}",
+                                exc_info=True,
+                            )
+                        finally:
+                            dl.set_status("complete")
+                            duration = time.monotonic() - transfer_start if transfer_start else 0
+                            if _mission_state:
+                                _mission_state.record_downlink_bytes(transfer_size, duration, True)
 
-        t = threading.Thread(target=_run_pipeline, args=(save_path, metadata, quality), daemon=True)
-        t.start()
-    else:
-        dl.set_status("complete")
-        import time as _time
-        duration = _time.monotonic() - transfer_start if transfer_start else 0
-        if _mission_state:
-            _mission_state.record_downlink_bytes(transfer_size, duration, True)
+            t = threading.Thread(target=_run_pipeline, args=(save_path, metadata, quality), daemon=True)
+            t.start()
+        else:
+            dl.set_status("complete")
+            duration = time.monotonic() - transfer_start if transfer_start else 0
+            if _mission_state:
+                _mission_state.record_downlink_bytes(transfer_size, duration, True)
 
 
 def _handle_telemetry(conn, filename, declared_size, declared_md5):
     """Receive telemetry JSON bytes, validate, hand off to parser."""
-    try:
-        data = _recv_exact(conn, declared_size)
-    except ConnectionError as e:
-        logger.warning(f"Partial telemetry '{filename}': {e}")
-        conn.sendall(protocol.NACK)
-        return
+    with _io_lock:
+        try:
+            data = _recv_exact(conn, declared_size)
+        except ConnectionError as e:
+            logger.warning(f"Partial telemetry '{filename}': {e}")
+            conn.sendall(protocol.NACK)
+            return
 
-    result = validate_transfer(data, declared_size, declared_md5, {})
-    if not result.valid:
-        logger.error(f"Telemetry validation failed for '{filename}': {result.reason}")
-        conn.sendall(protocol.NACK)
-        return
+        result = validate_transfer(data, declared_size, declared_md5, {})
+        if not result.valid:
+            logger.error(f"Telemetry validation failed for '{filename}': {result.reason}")
+            conn.sendall(protocol.NACK)
+            return
 
-    conn.sendall(protocol.ACK)
+        conn.sendall(protocol.ACK)
 
-    try:
-        parse_and_save_telemetry(data, filename)
-    except Exception as e:
-        logger.error(f"Telemetry parse error for '{filename}': {e}", exc_info=True)
+        try:
+            parse_and_save_telemetry(data, filename)
+        except Exception as e:
+            logger.error(f"Telemetry parse error for '{filename}': {e}", exc_info=True)
 
 
 def _handle_science_summary(conn, filename, declared_size, declared_md5):
     """Receive a compact science-summary JSON packet from the CubeSat."""
-    try:
-        data = _recv_exact(conn, declared_size)
-    except ConnectionError as e:
-        logger.warning(f"Partial science summary '{filename}': {e}")
-        conn.sendall(protocol.NACK)
-        return
+    with _io_lock:
+        started = time.monotonic()
+        try:
+            data = _recv_exact(conn, declared_size)
+        except ConnectionError as e:
+            logger.warning(f"Partial science summary '{filename}': {e}")
+            conn.sendall(protocol.NACK)
+            return
 
-    result = validate_transfer(data, declared_size, declared_md5, {})
-    if not result.valid:
-        logger.error(f"Science summary validation failed for '{filename}': {result.reason}")
-        conn.sendall(protocol.NACK)
-        return
+        result = validate_transfer(data, declared_size, declared_md5, {})
+        if not result.valid:
+            logger.error(f"Science summary validation failed for '{filename}': {result.reason}")
+            conn.sendall(protocol.NACK)
+            return
 
-    try:
-        summary = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        logger.error(f"Science summary decode failed for '{filename}': {e}")
-        conn.sendall(protocol.NACK)
-        return
+        try:
+            summary = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(f"Science summary decode failed for '{filename}': {e}")
+            conn.sendall(protocol.NACK)
+            return
 
-    conn.sendall(protocol.ACK)
-    logger.info(f"Science summary received for '{summary.get('filename', filename)}'")
-    if _mission_state:
-        _mission_state.record_science_summary(summary)
+        conn.sendall(protocol.ACK)
+        logger.info(f"Science summary received for '{summary.get('filename', filename)}'")
+        if _mission_state:
+            _mission_state.record_science_summary(summary)
+            _mission_state.record_downlink_bytes(len(data), time.monotonic() - started, True)
 
 
 def start_listener():

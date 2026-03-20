@@ -21,6 +21,7 @@ from flask import Flask, Response, jsonify, render_template, request, send_file
 
 import config
 from llm.interface import generate_operator_briefing, query_mission
+from receiver import listener
 from receiver import telemetry_parser
 from receiver.downlink_state import get_state as get_downlink_state
 from uplink.commander import Commander
@@ -1146,21 +1147,34 @@ def api_task_queue():
 def api_reset_mission():
     """Delete ALL mission data: received images, processed files, reset state."""
     try:
-        # Clear received images
-        if os.path.exists(config.RECEIVED_DIR):
-            shutil.rmtree(config.RECEIVED_DIR)
-            os.makedirs(config.RECEIVED_DIR, exist_ok=True)
+        def _reset_locked():
+            if os.path.exists(config.RECEIVED_DIR):
+                shutil.rmtree(config.RECEIVED_DIR)
+                os.makedirs(config.RECEIVED_DIR, exist_ok=True)
 
-        # Clear processed data
-        if os.path.exists(config.PROCESSED_DIR):
-            shutil.rmtree(config.PROCESSED_DIR)
+            if os.path.exists(config.PROCESSED_DIR):
+                shutil.rmtree(config.PROCESSED_DIR)
             os.makedirs(config.PROCESSED_DIR, exist_ok=True)
+            for subdir in (
+                "shadow_masks",
+                "hazard_maps",
+                "change_maps",
+                "mosaics",
+                "routes",
+                "mosaic_database",
+                "segmentation_maps",
+            ):
+                os.makedirs(os.path.join(config.PROCESSED_DIR, subdir), exist_ok=True)
 
-        # Reset mission state
-        if _mission_state:
-            _mission_state.reset()
+            if os.path.exists(config.TELEMETRY_DIR):
+                shutil.rmtree(config.TELEMETRY_DIR)
+            os.makedirs(config.TELEMETRY_DIR, exist_ok=True)
 
-        # Tell CubeSat to reset
+            if _mission_state:
+                _mission_state.reset()
+
+        listener.run_maintenance(_reset_locked)
+
         if _commander:
             _commander.send_command({"cmd": "reset_mission"})
 

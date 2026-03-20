@@ -111,6 +111,7 @@ def main():
     listener.set_pipeline_callback(
         lambda path, meta, quality: pipeline.process(path, meta, quality)
     )
+    listener.set_mission_state(mission_state)
 
     # 6. Start TCP listener in a background daemon thread
     listener_thread = threading.Thread(

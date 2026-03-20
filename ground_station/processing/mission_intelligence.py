@@ -5,6 +5,48 @@ from datetime import datetime, timezone
 import config
 
 
+def _label_quality(avg_quality: float) -> str:
+    if avg_quality >= 0.82:
+        return "strong"
+    if avg_quality >= 0.62:
+        return "usable"
+    return "weak"
+
+
+def _label_uncertainty(uncertainty: float) -> str:
+    if uncertainty >= 0.65:
+        return "high"
+    if uncertainty >= 0.35:
+        return "medium"
+    return "low"
+
+
+def _priority_band(score: float) -> str:
+    if score >= 0.44:
+        return "critical"
+    if score >= 0.32:
+        return "high"
+    if score >= 0.22:
+        return "medium"
+    return "low"
+
+
+def _task_family(task: dict) -> str:
+    return task.get("family") or task.get("category") or "review"
+
+
+def _task_diversity_rank(task: dict) -> tuple[int, float]:
+    family_order = {
+        "change_confirmation": 0,
+        "hazard_confirmation": 1,
+        "route_support": 2,
+        "uncertainty_reduction": 3,
+        "coverage": 4,
+        "refresh": 5,
+    }
+    return (family_order.get(_task_family(task), 99), -float(task.get("score", 0.0)))
+
+
 def cell_key(row: int, col: int) -> str:
     return f"{int(row)},{int(col)}"
 
@@ -121,7 +163,21 @@ def build_task_queue(snapshot: dict, max_tasks: int | None = None) -> list[dict]
     routes = snapshot.get("routes", {})
     tasks: list[dict] = []
 
-    def push_task(cmd: str, row: int, col: int, score: float, reasons: list[str], category: str):
+    def push_task(
+        cmd: str,
+        row: int,
+        col: int,
+        score: float,
+        reasons: list[str],
+        category: str,
+        *,
+        family: str,
+        why_now: str,
+        expected_gain: str,
+        confidence_label: str,
+        observation_strength: str,
+        freshness: str,
+    ):
         tasks.append({
             "cmd": cmd,
             "row": row,
@@ -130,6 +186,14 @@ def build_task_queue(snapshot: dict, max_tasks: int | None = None) -> list[dict]
             "reasons": reasons,
             "label": f"{cmd} ({row},{col})",
             "category": category,
+            "family": family,
+            "priority_band": _priority_band(score),
+            "why_now": why_now,
+            "expected_gain": expected_gain,
+            "confidence_label": confidence_label,
+            "observation_strength": observation_strength,
+            "freshness": freshness,
+            "command_preview": f"{cmd} ({row},{col})",
         })
 
     surveyed_cells = {
@@ -156,7 +220,20 @@ def build_task_queue(snapshot: dict, max_tasks: int | None = None) -> list[dict]
                     reasons = ["unsurveyed cell expands coverage"]
                     if frontier_bonus(row, col) > 0:
                         reasons.append("adjacent to an already observed corridor")
-                    push_task("observe_cell", row, col, score, reasons, "coverage")
+                    push_task(
+                        "observe_cell",
+                        row,
+                        col,
+                        score,
+                        reasons,
+                        "coverage",
+                        family="coverage",
+                        why_now="This is a clean first-look target and expands the surveyed frontier.",
+                        expected_gain="Adds new map coverage and reduces blind spots near the current corridor.",
+                        confidence_label="unknown",
+                        observation_strength="unseen",
+                        freshness="not yet observed",
+                    )
                     continue
 
                 route_relevance = estimate_route_relevance(state, routes)
@@ -165,6 +242,8 @@ def build_task_queue(snapshot: dict, max_tasks: int | None = None) -> list[dict]
                 hazard = state.get("dominant_hazard", "SAFE")
                 obs_count = int(state.get("observation_count", 0))
                 quality = float(state.get("avg_quality", 0.0))
+                quality_label = _label_quality(quality)
+                uncertainty_label = _label_uncertainty(uncertainty)
                 hazard_pressure = 1.0 if hazard in ("HAZARD", "IMPASSABLE", "SHADOW") else 0.2
                 revisit_pressure = 0.18 if obs_count <= 1 else 0.08
                 quality_penalty = max(0.0, 0.75 - quality)
@@ -192,25 +271,76 @@ def build_task_queue(snapshot: dict, max_tasks: int | None = None) -> list[dict]
                     reasons.append("existing observation quality is weak")
                 if not reasons:
                     reasons.append("refresh existing terrain estimate")
-                push_task("revisit_cell", row, col, score, reasons, "revisit")
+                if change_prob >= 0.35:
+                    family = "change_confirmation"
+                    why_now = "This cell has a live change signal that is still based on limited evidence."
+                    expected_gain = "A revisit can confirm or clear a suspected surface change before it propagates into route decisions."
+                elif hazard in ("HAZARD", "IMPASSABLE", "SHADOW"):
+                    family = "hazard_confirmation"
+                    why_now = f"This cell is currently believed to be {hazard.lower()} but the evidence is not mature."
+                    expected_gain = "A stronger revisit will sharpen the hazard boundary and reduce false route penalties nearby."
+                elif route_relevance >= 0.5:
+                    family = "route_support"
+                    why_now = "This cell sits on a likely route corridor and weak evidence here can distort planning."
+                    expected_gain = "Improves route confidence by resolving terrain quality on a high-impact corridor."
+                elif uncertainty >= 0.45:
+                    family = "uncertainty_reduction"
+                    why_now = "This cell remains one of the least certain parts of the current map."
+                    expected_gain = "Reduces uncertainty in the fused terrain map and improves confidence calibration."
+                else:
+                    family = "refresh"
+                    why_now = "This cell benefits from a refresh because the current observation is aging or weak."
+                    expected_gain = "Improves local map quality and supports more stable downstream planning."
+
+                freshness = "single observation" if obs_count <= 1 else f"{obs_count} observations"
+                push_task(
+                    "revisit_cell",
+                    row,
+                    col,
+                    score,
+                    reasons,
+                    "revisit",
+                    family=family,
+                    why_now=why_now,
+                    expected_gain=expected_gain,
+                    confidence_label=uncertainty_label,
+                    observation_strength=quality_label,
+                    freshness=freshness,
+                )
 
     tasks.sort(key=lambda task: task["score"], reverse=True)
-    deduped: list[dict] = []
-    seen: set[tuple[str, int, int]] = set()
-    coverage_count = 0
+    per_family: dict[str, list[dict]] = {}
     for task in tasks:
-        sig = (task["cmd"], task["row"], task["col"])
-        if sig in seen:
+        per_family.setdefault(_task_family(task), []).append(task)
+
+    selected: list[dict] = []
+    seen_cells: set[tuple[int, int]] = set()
+    for family, family_tasks in sorted(per_family.items(), key=lambda item: _task_diversity_rank(item[1][0])):
+        top = family_tasks[0]
+        cell_sig = (top["row"], top["col"])
+        if cell_sig in seen_cells:
             continue
-        if task.get("category") == "coverage" and coverage_count >= 2 and len(tasks) > max_tasks:
-            continue
-        seen.add(sig)
-        if task.get("category") == "coverage":
-            coverage_count += 1
-        deduped.append(task)
-        if len(deduped) >= max_tasks:
+        selected.append(top)
+        seen_cells.add(cell_sig)
+        if len(selected) >= max_tasks:
             break
-    return deduped
+
+    if len(selected) < max_tasks:
+        for task in tasks:
+            cell_sig = (task["row"], task["col"])
+            if cell_sig in seen_cells:
+                continue
+            if task.get("category") == "coverage":
+                coverage_already = sum(1 for item in selected if item.get("category") == "coverage")
+                if coverage_already >= 1 and len(tasks) > max_tasks:
+                    continue
+            selected.append(task)
+            seen_cells.add(cell_sig)
+            if len(selected) >= max_tasks:
+                break
+
+    selected.sort(key=lambda task: task["score"], reverse=True)
+    return selected
 
 
 def build_mission_metrics(snapshot: dict) -> dict:
@@ -239,24 +369,67 @@ def build_briefing(snapshot: dict) -> dict:
     tasks = snapshot.get("task_queue", [])
     metrics = snapshot.get("mission_metrics", {})
     top_task = tasks[0] if tasks else None
+    cell_states = snapshot.get("cell_states", {})
+
+    hazard_cells = [
+        state for state in cell_states.values()
+        if state.get("dominant_hazard") in ("HAZARD", "IMPASSABLE", "SHADOW")
+    ]
+    weak_cells = [
+        state for state in cell_states.values()
+        if float(state.get("uncertainty", 1.0)) >= 0.45
+    ]
+    route_cells = [
+        state for state in cell_states.values()
+        if float(estimate_route_relevance(state, snapshot.get("routes", {}))) >= 0.5
+    ]
 
     headline = (
         f"Surveyed {coverage.get('cells_filled', 0)} of {coverage.get('cells_total', 0)} cells "
         f"({coverage.get('pct', 0.0)}%)."
     )
     if top_task:
-        headline += f" Next best action is {top_task['cmd']} at ({top_task['row']},{top_task['col']})."
+        headline += f" Recommend {top_task['cmd']} at ({top_task['row']},{top_task['col']}) next."
+
+    mission_status = (
+        f"Survey phase is {'early' if coverage.get('pct', 0.0) < 20 else 'developing' if coverage.get('pct', 0.0) < 60 else 'mature'}; "
+        f"{len(hazard_cells)} cells currently carry elevated hazard belief."
+    )
+    recommended_action = (
+        f"Send `{top_task['command_preview']}` now."
+        if top_task else
+        "No immediate follow-up task is available."
+    )
+    why_now = top_task.get("why_now") if top_task else "Continue collecting observations to build mission state."
+    expected_payoff = top_task.get("expected_gain") if top_task else "Additional observations will improve map coverage."
+    ai_confidence = (
+        f"Map uncertainty is concentrated in {len(weak_cells)} cell(s); "
+        f"{len(route_cells)} cell(s) are currently route-relevant."
+    )
 
     bullets = [
-        f"Top hazard burden: {max(hazards, key=hazards.get) if hazards else 'unknown'}",
-        f"Detected {changes.get('total_events', 0)} total change event(s)",
-        f"Coverage efficiency is {metrics.get('coverage_efficiency', 0.0):.3f} surveyed cells per image",
+        mission_status,
+        f"Recommended action: {recommended_action}",
+        f"Why now: {why_now}",
+        f"Expected payoff: {expected_payoff}",
+        f"AI confidence: {ai_confidence}",
+        f"Mission metrics: {changes.get('total_events', 0)} change event(s), "
+        f"{metrics.get('coverage_efficiency', 0.0):.3f} cells/image, "
+        f"{metrics.get('bytes_per_surveyed_cell', 0.0):.1f} bytes/surveyed cell.",
     ]
-    if top_task:
-        bullets.append("Task rationale: " + "; ".join(top_task.get("reasons", [])))
 
     return {
         "headline": headline,
         "bullets": bullets,
+        "recommended_action": recommended_action,
+        "why_now": why_now,
+        "expected_payoff": expected_payoff,
+        "ai_confidence": ai_confidence,
+        "suggested_questions": [
+            "What changed this pass?",
+            "Why is this the top task?",
+            "Which cells most affect route safety?",
+            "What should we do if bandwidth is limited?",
+        ],
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

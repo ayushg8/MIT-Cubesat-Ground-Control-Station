@@ -139,6 +139,21 @@ input.active-input { border-color: var(--cyan); }
 .pnl-badge.core { border-color: var(--amber); color: var(--amber); }
 .pnl-badge.green { border-color: var(--green); color: var(--green); }
 .pnl-body { padding: 14px; }
+.intel-block { background:#0d1220; border:1px solid #243048; padding:10px; margin-bottom:10px; }
+.intel-mini { font-family:var(--mono); font-size:11px; color:var(--dim); line-height:1.5; }
+.task-card { background:#101726; border:1px solid #243048; padding:10px; margin-bottom:8px; }
+.task-topline { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:6px; }
+.task-chip { font-family:var(--mono); font-size:10px; text-transform:uppercase; padding:2px 6px; border:1px solid var(--border); color:var(--dim); }
+.task-chip.critical { border-color:var(--red); color:var(--red); }
+.task-chip.high { border-color:var(--amber); color:var(--amber); }
+.task-chip.medium { border-color:var(--cyan); color:var(--cyan); }
+.task-card p { margin:4px 0; font-size:12px; color:var(--txt); }
+.task-card .meta { font-family:var(--mono); font-size:11px; color:var(--dim); }
+.feed-card { background:#101726; border:1px solid #243048; padding:10px; margin-bottom:8px; }
+.feed-title { color:var(--bright); font-size:13px; margin-bottom:4px; }
+.feed-meta { font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:4px; }
+.prompt-row { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px; }
+.prompt-btn { padding:6px 8px; font-size:10px !important; }
 
 /* ── Grid layouts ── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -675,28 +690,30 @@ input.active-input { border-color: var(--cyan); }
       <div class="pnl">
         <div class="pnl-hdr"><span class="pnl-title">Mission Q&amp;A</span></div>
         <div class="pnl-body" style="padding:8px;">
-          <div class="briefing-box">
+          <div class="intel-block">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
               <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Operator Briefing</span>
               <button type="button" onclick="loadMissionIntel(true)">LLAMA BRIEF</button>
             </div>
             <div id="briefing-headline" class="briefing-headline">No mission briefing yet.</div>
             <ul id="briefing-bullets" class="briefing-list"></ul>
+            <div id="briefing-ai-confidence" class="intel-mini" style="margin-top:6px;"></div>
             <div id="briefing-llm" style="white-space:pre-wrap;color:var(--dim);font-size:11px;margin-top:6px;"></div>
           </div>
-          <div class="task-box">
+          <div class="intel-block">
             <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Priority Task Queue</div>
-            <ul id="task-queue" class="task-list"></ul>
+            <div id="task-queue"></div>
           </div>
-          <div class="task-box">
-            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Science Feed</div>
-            <ul id="science-feed" class="science-feed"></ul>
+          <div class="intel-block">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Mission Events</div>
+            <div id="science-feed"></div>
           </div>
           <div id="llm-bar">
             <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Ask</span>
             <input id="llm-input" type="text" placeholder="Ask about mission state..." onkeydown="if(event.key==='Enter')sendLLM()">
             <button type="button" onclick="sendLLM()">ASK</button>
           </div>
+          <div id="llm-prompts" class="prompt-row"></div>
           <div id="llm-response"></div>
         </div>
       </div>
@@ -2690,28 +2707,52 @@ async function sendLLM() {
   }
 }
 
+function askPreset(question) {
+  el('llm-input').value = question;
+  sendLLM();
+}
+
 function renderBriefing(d) {
   const deterministic = d.deterministic || {};
   el('briefing-headline').textContent = deterministic.headline || 'No mission briefing yet.';
   const bullets = deterministic.bullets || [];
   el('briefing-bullets').innerHTML = bullets.map(b => `<li>${b}</li>`).join('');
+  el('briefing-ai-confidence').textContent = deterministic.ai_confidence || '';
   el('briefing-llm').textContent = d.llm || '';
+  const prompts = deterministic.suggested_questions || [];
+  el('llm-prompts').innerHTML = prompts.map(q =>
+    `<button class="prompt-btn" type="button" onclick="askPreset(${JSON.stringify(q).replace(/"/g, '&quot;')})">${q}</button>`
+  ).join('');
 }
 
 function renderTaskQueue(d) {
   const tasks = d.tasks || [];
   const feed = d.science_feed || [];
-  el('task-queue').innerHTML = tasks.map(task => {
-    const reason = (task.reasons || []).join('; ');
-    return `<li><strong>${task.cmd}</strong> cell (${task.row},${task.col}) score=${(task.score ?? 0).toFixed(3)} ` +
-      `<button class="task-btn" type="button" onclick="applyTask('${task.cmd}', ${task.row}, ${task.col})">SEND</button><br>` +
-      `<span>${reason}</span></li>`;
-  }).join('') || '<li>No queued tasks.</li>';
+  el('task-queue').innerHTML = tasks.map(task => `
+    <div class="task-card">
+      <div class="task-topline">
+        <div>
+          <div><strong>${task.command_preview || `${task.cmd} (${task.row},${task.col})`}</strong></div>
+          <div class="meta">${task.family || task.category || 'task'} | score ${(task.score ?? 0).toFixed(3)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="task-chip ${task.priority_band || 'medium'}">${task.priority_band || 'medium'}</span>
+          <button class="task-btn" type="button" onclick="applyTask('${task.cmd}', ${task.row}, ${task.col})">SEND</button>
+        </div>
+      </div>
+      <p><strong>Why now:</strong> ${task.why_now || (task.reasons || []).join('; ') || 'No rationale available.'}</p>
+      <p><strong>Expected gain:</strong> ${task.expected_gain || 'Improves mission state.'}</p>
+      <div class="meta">Confidence ${task.confidence_label || '--'} | Evidence ${task.observation_strength || '--'} | Freshness ${task.freshness || '--'}</div>
+    </div>
+  `).join('') || '<div class="intel-mini">No queued tasks.</div>';
   el('science-feed').innerHTML = feed.slice(0, 6).map(item => {
-    const cell = Array.isArray(item.cell) ? `(${item.cell[0]},${item.cell[1]})` : '--';
-    return `<li><strong>${item.source || 'event'}</strong> ${item.filename || '--'} ${cell}<br>` +
-      `<span>${item.notes || ''}</span></li>`;
-  }).join('') || '<li>No science products yet.</li>';
+    const cell = Array.isArray(item.cell) ? `Cell (${item.cell[0]},${item.cell[1]})` : 'No cell';
+    return `<div class="feed-card">
+      <div class="feed-title">${item.title || `${item.source || 'event'} update`}</div>
+      <div>${item.summary || item.notes || 'No event summary available.'}</div>
+      <div class="feed-meta">${cell} | ${item.source || 'event'}${item.filename ? ` | ${item.filename}` : ''}</div>
+    </div>`;
+  }).join('') || '<div class="intel-mini">No mission events yet.</div>';
 }
 
 async function loadMissionIntel(withLLM = false) {

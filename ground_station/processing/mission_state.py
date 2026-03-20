@@ -33,6 +33,8 @@ class MissionState:
         self._lock = threading.Lock()
         self._state = self._empty_state()
         self._load()
+        with self._lock:
+            self._refresh_mission_intelligence_locked()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public record methods — called by pipeline.py after each step
@@ -228,6 +230,8 @@ class MissionState:
                 "change_events": observation.get("change_events", 0),
                 "timestamp": observation.get("timestamp"),
                 "notes": observation.get("task_reason") or "",
+                "title": self._build_ground_event_title(observation, updated),
+                "summary": self._build_ground_event_summary(observation, updated),
             })
             self._refresh_mission_intelligence_locked()
 
@@ -244,6 +248,8 @@ class MissionState:
                 "change_events": summary.get("change_hint", 0),
                 "timestamp": summary.get("timestamp"),
                 "notes": ", ".join(summary.get("science_reasons", [])),
+                "title": self._build_flight_event_title(summary),
+                "summary": self._build_flight_event_summary(summary),
             })
             self._refresh_mission_intelligence_locked()
 
@@ -320,6 +326,46 @@ class MissionState:
         feed = self._state["science_feed"]
         feed.insert(0, entry)
         del feed[config.MISSION_FEED_LIMIT:]
+
+    def _build_ground_event_title(self, observation: dict, updated_state: dict) -> str:
+        row, col = observation["grid_cell"]
+        change_events = int(observation.get("change_events") or 0)
+        hazard = (updated_state.get("dominant_hazard") or observation.get("hazard_class") or "SAFE").lower()
+        if change_events > 0:
+            return f"Change flagged in cell ({row},{col})"
+        if hazard in ("hazard", "impassable", "shadow"):
+            return f"Cell ({row},{col}) classified as {hazard}"
+        return f"Cell ({row},{col}) updated"
+
+    def _build_ground_event_summary(self, observation: dict, updated_state: dict) -> str:
+        change_events = int(observation.get("change_events") or 0)
+        hazard = (updated_state.get("dominant_hazard") or observation.get("hazard_class") or "SAFE").lower()
+        quality = float(updated_state.get("avg_quality") or 0.0)
+        obs_count = int(updated_state.get("observation_count") or 0)
+        if change_events > 0:
+            return (
+                f"{change_events} change event(s) detected; "
+                f"current hazard belief is {hazard}; observation strength is "
+                f"{'strong' if quality >= 0.82 else 'usable' if quality >= 0.62 else 'weak'}."
+            )
+        return (
+            f"Hazard belief is {hazard}; "
+            f"{obs_count} observation(s) now support this cell; "
+            f"latest evidence is {'strong' if quality >= 0.82 else 'usable' if quality >= 0.62 else 'weak'}."
+        )
+
+    def _build_flight_event_title(self, summary: dict) -> str:
+        cell = summary.get("grid_cell") or ["?", "?"]
+        if int(summary.get("change_hint") or 0) > 0:
+            return f"Flight summary flagged change near cell ({cell[0]},{cell[1]})"
+        return f"Flight summary received for cell ({cell[0]},{cell[1]})"
+
+    def _build_flight_event_summary(self, summary: dict) -> str:
+        hazard = str(summary.get("hazard_hint") or "unknown").lower()
+        reasons = summary.get("science_reasons") or []
+        if reasons:
+            return f"Science value {summary.get('science_value', 0):.2f}; reasons: {', '.join(reasons[:3])}."
+        return f"Science value {summary.get('science_value', 0):.2f}; hazard hint is {hazard}."
 
     def _refresh_mission_intelligence_locked(self):
         self._state["mission_metrics"] = build_mission_metrics(self._state)
@@ -405,6 +451,16 @@ class MissionState:
             "mission_briefing": {
                 "headline": "No observations yet.",
                 "bullets": [],
+                "recommended_action": "No immediate follow-up task is available.",
+                "why_now": "Continue collecting observations to build mission state.",
+                "expected_payoff": "Additional observations will improve map coverage.",
+                "ai_confidence": "No uncertainty model is available yet because no cells have been observed.",
+                "suggested_questions": [
+                    "What changed this pass?",
+                    "Why is this the top task?",
+                    "Which cells most affect route safety?",
+                    "What should we do if bandwidth is limited?",
+                ],
                 "generated_at": "",
             },
             "science_products": {

@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Paths
 _MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+_SANDBOX_SEG_PATH = os.path.join(_MODEL_DIR, "sandbox_seg.pt")
 _TERRAIN_MODEL_PATH = os.path.join(_MODEL_DIR, "terrain_detector.pt")
 _LUNAR_MODEL_PATH = os.path.join(_MODEL_DIR, "lunar_detector.pt")
 _DETECTIONS_DIR = os.path.join(config.PROCESSED_DIR, "yolo_detections")
@@ -79,10 +80,15 @@ class YOLODetector:
         try:
             from ultralytics import YOLO
 
-            if os.path.exists(_TERRAIN_MODEL_PATH):
-                # Prefer terrain model — trained on sandbox/desert + Pi camera images
+            if os.path.exists(_SANDBOX_SEG_PATH):
+                # Prefer sandbox segmentation model — trained on real sandbox demo images
+                self._model = YOLO(_SANDBOX_SEG_PATH)
+                self._is_lunar = True
+                self._model_name = "sandbox_yolov8_seg"
+                logger.info(f"YOLO: loaded sandbox segmentation model from {_SANDBOX_SEG_PATH}")
+            elif os.path.exists(_TERRAIN_MODEL_PATH):
                 self._model = YOLO(_TERRAIN_MODEL_PATH)
-                self._is_lunar = True  # same class structure
+                self._is_lunar = True
                 self._model_name = "terrain_yolov8"
                 logger.info(f"YOLO: loaded terrain model from {_TERRAIN_MODEL_PATH}")
             elif os.path.exists(_LUNAR_MODEL_PATH):
@@ -167,10 +173,20 @@ class YOLODetector:
 
                 # Filter out full-frame detections (model noise, not real objects)
                 det_area = (x2 - x1) * (y2 - y1)
-                if det_area > img_area * 0.5:
+                if det_area > img_area * 0.25:
                     logger.debug(
-                        f"YOLO: skipping full-frame {lunar_class} "
+                        f"YOLO: skipping oversized {lunar_class} "
                         f"({det_area/img_area*100:.0f}% of image) in {os.path.basename(image_path)}"
+                    )
+                    continue
+
+                # Filter out edge-touching detections (sandbox frame artifacts)
+                edge_margin = 5
+                touches_edge = (x1 < edge_margin or y1 < edge_margin or
+                                x2 > img_w - edge_margin or y2 > img_h - edge_margin)
+                if touches_edge and lunar_class in ("boulder", "obstacle"):
+                    logger.debug(
+                        f"YOLO: skipping edge {lunar_class} in {os.path.basename(image_path)}"
                     )
                     continue
 

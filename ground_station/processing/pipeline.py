@@ -493,13 +493,11 @@ class Pipeline:
             if change_result and change_result["change_summary"]["total_events"] > 0:
                 change_cells = [list(grid_cell)]
 
-            slope_grid = self._mosaic_grid.get_slope_grid()
             save_cost_grid_json(
                 cost_grid, hazard_grid,
                 image_index=self._image_index,
                 change_cells=change_cells,
                 confidence_grid=confidence_grid,
-                slope_grid=slope_grid,
             )
         except Exception as e:
             logger.error(f"Pipeline [{basename}] save_cost_grid_json FAILED: {e}", exc_info=True)

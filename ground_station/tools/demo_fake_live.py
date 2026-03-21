@@ -35,6 +35,9 @@ import threading
 import time
 from datetime import datetime, timezone
 
+import cv2
+import numpy as np
+
 # Make ground_station/ importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -53,19 +56,24 @@ DEFAULT_DOWNLINK_SPEED = 4000   # bytes/sec for progress animation
 DEFAULT_DELAY_BETWEEN = 0.5     # seconds between images within downlink
 
 # ── Training dataset paths (relative to repo root) ──────────────────────────
+_REPO_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+
 DATASET_DIRS = [
     # Flight software test images (real CubeSat camera captures)
-    os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                 "MIT-BWSI-Cubesat-Flight-Software", "Images"),
+    os.path.join(_REPO_ROOT, "MIT-BWSI-Cubesat-Flight-Software", "Images"),
     # YOLO training dataset (clean)
-    os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                 "yolo_training", "dataset_clean", "train", "images"),
+    os.path.join(_REPO_ROOT, "yolo_training", "dataset_clean", "train", "images"),
     # Roboflow dataset
-    os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                 "CubeSat Demo Images.v2i.yolov8", "train", "images"),
+    os.path.join(_REPO_ROOT, "CubeSat Demo Images.v2i.yolov8", "train", "images"),
     # Validation set (different angles)
-    os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                 "yolo_training", "dataset_clean", "valid", "images"),
+    os.path.join(_REPO_ROOT, "yolo_training", "dataset_clean", "valid", "images"),
+]
+
+# Shadow dataset — lunar-style images with actual shadows
+SHADOW_DATASET_DIRS = [
+    os.path.join(_REPO_ROOT, "yolo_training", "shadow_dataset", "train", "images"),
+    os.path.join(_REPO_ROOT, "yolo_training", "shadow_dataset", "valid", "images"),
+    os.path.join(_REPO_ROOT, "yolo_training", "shadow_dataset", "test", "images"),
 ]
 
 
@@ -96,30 +104,125 @@ def find_dataset_images():
     return images
 
 
-def prepare_images(all_images, num_passes, images_per_pass):
+def find_shadow_images():
+    """Gather lunar shadow images from the shadow dataset."""
+    images = []
+    for d in SHADOW_DATASET_DIRS:
+        d = os.path.abspath(d)
+        if not os.path.isdir(d):
+            continue
+        for ext in ("*.jpg", "*.jpeg", "*.png"):
+            images.extend(glob.glob(os.path.join(d, ext)))
+    images = sorted(set(images))
+    return images
+
+
+def paint_shadow(img):
+    """Add a realistic synthetic shadow region to an image.
+
+    Simulates a cast shadow from a rock or crater rim — a dark region with
+    soft, blurred edges on one side (penumbra) and a sharper edge on the
+    shadow-casting side.  The shadow darkens pixels to 20-40% of original
+    brightness, which is enough to trigger the adaptive-threshold shadow
+    detector.
+    """
+    h, w = img.shape[:2]
+
+    # Random shadow shape: ellipse or polygon
+    mask = np.zeros((h, w), dtype=np.float32)
+
+    shadow_type = random.choice(["ellipse", "polygon", "diagonal"])
+
+    if shadow_type == "ellipse":
+        cx = random.randint(w // 6, 5 * w // 6)
+        cy = random.randint(h // 6, 5 * h // 6)
+        ax = random.randint(w // 8, w // 3)
+        ay = random.randint(h // 8, h // 3)
+        angle = random.randint(0, 180)
+        cv2.ellipse(mask, (cx, cy), (ax, ay), angle, 0, 360, 1.0, -1)
+
+    elif shadow_type == "polygon":
+        n_pts = random.randint(4, 7)
+        cx, cy = w // 2, h // 2
+        pts = []
+        for k in range(n_pts):
+            a = 2 * np.pi * k / n_pts + random.uniform(-0.3, 0.3)
+            r = random.uniform(min(w, h) * 0.15, min(w, h) * 0.4)
+            pts.append([int(cx + r * np.cos(a)), int(cy + r * np.sin(a))])
+        pts = np.array(pts, dtype=np.int32)
+        cv2.fillPoly(mask, [pts], 1.0)
+
+    else:  # diagonal band
+        band_w = random.randint(h // 6, h // 3)
+        offset = random.randint(-w // 4, w // 4)
+        pts = np.array([
+            [offset, 0], [offset + band_w, 0],
+            [w + offset + band_w, h], [w + offset, h],
+        ], dtype=np.int32)
+        cv2.fillPoly(mask, [pts], 1.0)
+
+    # Blur edges heavily for soft penumbra — must stay below shadow detector's
+    # gradient threshold of 30 so the dark region is classified as "shadow"
+    # rather than "object" (hard-edged rock).
+    blur_k = random.choice([31, 41, 51, 61])
+    mask = cv2.GaussianBlur(mask, (blur_k, blur_k), 0)
+
+    # Shadow darkness: keep 15-35% of original brightness (strong enough to detect)
+    darkness = random.uniform(0.15, 0.35)
+    shadow_factor = 1.0 - mask * (1.0 - darkness)
+
+    # Apply shadow
+    result = (img.astype(np.float32) * shadow_factor[:, :, np.newaxis]).astype(np.uint8)
+    return result
+
+
+def prepare_images(all_images, shadow_images, num_passes, images_per_pass):
     """Select and copy images into data/received_images/ with metadata sidecars.
+
+    Mixes in shadow dataset images and paints synthetic shadows onto ~40% of
+    the regular training images so the shadow detector fires realistically.
 
     Returns dict: {pass_number: [(jpg_path, meta_path), ...]}
     """
     total_needed = num_passes * images_per_pass
-    if len(all_images) < total_needed:
-        # Allow reuse if we don't have enough unique images
-        selected = []
-        while len(selected) < total_needed:
-            remaining = total_needed - len(selected)
-            batch = random.sample(all_images, min(remaining, len(all_images)))
-            selected.extend(batch)
-    else:
-        selected = random.sample(all_images, total_needed)
+
+    # Mix: ~30% from shadow dataset, ~70% from regular dataset
+    n_shadow = max(1, int(total_needed * 0.3)) if shadow_images else 0
+    n_regular = total_needed - n_shadow
+
+    def pick(pool, n):
+        out = []
+        while len(out) < n:
+            remaining = n - len(out)
+            batch = random.sample(pool, min(remaining, len(pool)))
+            out.extend(batch)
+        return out
+
+    selected_regular = pick(all_images, n_regular)
+    selected_shadow = pick(shadow_images, n_shadow) if shadow_images else []
+
+    # Interleave: spread shadow images across the passes
+    combined = []
+    si = 0
+    ri = 0
+    for idx in range(total_needed):
+        # Every ~3rd image from shadow dataset
+        if si < len(selected_shadow) and (idx % 3 == 1 or ri >= len(selected_regular)):
+            combined.append(("shadow", selected_shadow[si]))
+            si += 1
+        else:
+            combined.append(("regular", selected_regular[ri]))
+            ri += 1
 
     os.makedirs(config.RECEIVED_DIR, exist_ok=True)
 
     passes = {}
     img_idx = 0
+    shadow_painted = 0
     for pass_num in range(1, num_passes + 1):
         pass_images = []
         for i in range(images_per_pass):
-            src = selected[img_idx]
+            src_type, src = combined[img_idx]
             img_idx += 1
 
             # Generate proper filename
@@ -127,13 +230,23 @@ def prepare_images(all_images, num_passes, images_per_pass):
             dst_name = f"pass{pass_num}_img{i:02d}_{ts}.jpg"
             dst_path = os.path.join(config.RECEIVED_DIR, dst_name)
 
-            # Copy image
-            shutil.copy2(src, dst_path)
+            # Read image (handles both JPG and PNG)
+            img = cv2.imread(src)
+            if img is None:
+                # Fallback: just copy
+                shutil.copy2(src, dst_path)
+            else:
+                # Paint synthetic shadow onto ~65% of ALL images so shadow detector fires
+                if random.random() < 0.65:
+                    img = paint_shadow(img)
+                    shadow_painted += 1
+
+                # Save as JPEG (shadow dataset PNGs get converted)
+                cv2.imwrite(dst_path, img, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
             # Generate metadata sidecar
-            # Simulate grid cells that tile a region (overlapping slightly for mosaic)
             row = (i // 4) % 8
-            col = (i % 4) + (pass_num - 1) * 2  # shift columns per pass for change detection
+            col = (i % 4) + (pass_num - 1) * 2
             col = col % 8
 
             blur_score = round(random.uniform(0.65, 0.95), 3)
@@ -147,8 +260,9 @@ def prepare_images(all_images, num_passes, images_per_pass):
                 "blur_score": blur_score,
                 "exposure_score": exposure_score,
                 "combined_score": combined_score,
-                "resolution": [320, 240],
+                "resolution": [img.shape[1], img.shape[0]] if img is not None else [320, 240],
                 "source": os.path.basename(src),
+                "has_shadow": src_type == "shadow" or shadow_painted > 0,
                 "quality": {
                     "blur_score": blur_score,
                     "exposure_score": exposure_score,
@@ -180,6 +294,8 @@ def prepare_images(all_images, num_passes, images_per_pass):
 
         passes[pass_num] = pass_images
 
+    print(f"    Shadow dataset images: {n_shadow}")
+    print(f"    Synthetic shadows painted: {shadow_painted}")
     return passes
 
 
@@ -343,9 +459,14 @@ def main():
                         help=f"Downlink speed in bytes/sec (default: {DEFAULT_DOWNLINK_SPEED})")
     parser.add_argument("--no-clear", action="store_true",
                         help="Don't clear previous processed data")
+    parser.add_argument("--port", type=int, default=None,
+                        help="Dashboard port (default: from config, typically 3000)")
     parser.add_argument("--seed", type=int, default=None,
                         help="Random seed for reproducible image selection")
     args = parser.parse_args()
+
+    if args.port is not None:
+        config.DASHBOARD_PORT = args.port
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -355,10 +476,11 @@ def main():
 
     # Find training dataset images
     all_images = find_dataset_images()
-    if not all_images:
+    shadow_images = find_shadow_images()
+    if not all_images and not shadow_images:
         print("\n  ERROR: No training dataset images found!")
         print("  Expected images in:")
-        for d in DATASET_DIRS:
+        for d in DATASET_DIRS + SHADOW_DATASET_DIRS:
             print(f"    {os.path.abspath(d)}")
         sys.exit(1)
 
@@ -368,21 +490,30 @@ def main():
     print("  Images sourced from training dataset — NOT live hardware")
     print("=" * 65)
     print()
-    print(f"  Dataset images found: {len(all_images)}")
-    print(f"  Passes to simulate:  {args.passes}")
-    print(f"  Images per pass:     {args.images_per_pass}")
-    print(f"  Downlink speed:      {args.speed} B/s")
-    print(f"  Dashboard:           http://localhost:{config.DASHBOARD_PORT}")
+    print(f"  Terrain images found: {len(all_images)}")
+    print(f"  Shadow images found:  {len(shadow_images)}")
+    print(f"  Passes to simulate:   {args.passes}")
+    print(f"  Images per pass:      {args.images_per_pass}")
+    print(f"  Downlink speed:       {args.speed} B/s")
+    print(f"  Dashboard:            http://localhost:{config.DASHBOARD_PORT}")
     print()
 
     create_dirs()
     if not args.no_clear:
         print("  Clearing old data...")
         clear_processed_data()
+        # Also nuke mission state file so Pipeline starts fresh
+        for stale in [config.MISSION_STATE_FILE,
+                      os.path.join(config.PROCESSED_DIR, "image_index.json"),
+                      os.path.join(config.PROCESSED_DIR, "yolo_detections.json"),
+                      os.path.join(config.PROCESSED_DIR, "shadow_data.json"),
+                      os.path.join(config.PROCESSED_DIR, "changes.json")]:
+            if os.path.exists(stale):
+                os.remove(stale)
 
-    # Prepare images with metadata sidecars
+    # Prepare images with metadata sidecars (mixes shadow + regular + synthetic shadows)
     print("  Preparing demo images from training dataset...")
-    passes = prepare_images(all_images, args.passes, args.images_per_pass)
+    passes = prepare_images(all_images, shadow_images, args.passes, args.images_per_pass)
     total_images = sum(len(v) for v in passes.values())
     print(f"  Prepared {total_images} images across {len(passes)} passes")
     print()

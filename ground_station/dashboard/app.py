@@ -750,9 +750,11 @@ def api_plan_routes():
         )
 
         # Add mosaic_path to each route (including PPO if present)
+        # Use fine cell size (20px) when segmentation is enabled, coarse (80px) otherwise
+        route_cell_px = config.SEG_GRID_CELL_PX if config.SEG_ENABLED else config.MOSAIC_GRID_CELL_PX
         for name in ("fastest", "safest", "balanced", "ppo"):
             if name in routes and routes[name].get("path"):
-                routes[name]["mosaic_path"] = grid_path_to_mosaic_path(routes[name]["path"])
+                routes[name]["mosaic_path"] = grid_path_to_mosaic_path(routes[name]["path"], cell_px=route_cell_px)
 
         if _mission_state:
             with _mission_state._lock:

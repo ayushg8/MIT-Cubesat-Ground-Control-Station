@@ -575,6 +575,7 @@ input.active-input { border-color: var(--cyan); }
             <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
             <button id="btn-auto-landing" onclick="autoRecommendLanding()" style="background:var(--cyan);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-RECOMMEND LANDING</button>
             <button id="btn-auto-target" onclick="autoRecommendTarget()" style="background:var(--red);color:#fff;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-TARGET</button>
+            <button id="btn-plan-routes" onclick="planRoutes(this)" style="background:var(--green);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">PLAN ROUTES</button>
             <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
           </div>
           <div id="mosaic-map"></div>
@@ -1266,12 +1267,12 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
-let _mosaicVisibleRoutes = new Set(['fastest', 'safest', 'balanced']); // which routes are visible on map
+let _mosaicVisibleRoutes = new Set(['fastest', 'safest', 'balanced', 'ppo']); // which routes are visible on map
 
 function renderRouteCards(routes) {
   const selected = routes.selected || 'safest';
-  const names = ['fastest', 'safest', 'balanced'];
-  const colours = { fastest: '#00ff88', safest: '#4488ff', balanced: '#ffaa00' };
+  const names = ['fastest', 'safest', 'balanced', 'ppo'];
+  const colours = { fastest: '#00ff88', safest: '#4488ff', balanced: '#ffaa00', ppo: '#ff44ff' };
 
   const container = el('route-cards');
   container.innerHTML = '';
@@ -1442,18 +1443,31 @@ function getRouteStart() { return _routeStartMosaic ? [_routeStartMosaic[0], _ro
 function getRouteEnd()   { return _routeEndMosaic ? [_routeEndMosaic[0], _routeEndMosaic[1]] : null; }
 
 async function planRoutes(btn) {
-  if (!_routeStartMosaic || !_routeEndMosaic) {
-    const fb = el('plan-routes-feedback');
-    fb.textContent = 'Set landing and target first'; fb.style.color = 'var(--amber)';
-    return;
-  }
   const fb = el('plan-routes-feedback');
+
+  // Auto-set default landing/target if not set and mosaic is loaded
+  if (!_routeStartMosaic || !_routeEndMosaic) {
+    if (_mosaicInfo && _mosaicInfo.width > 0 && _mosaicInfo.height > 0) {
+      const w = _mosaicInfo.width, h = _mosaicInfo.height;
+      if (!_routeStartMosaic) _routeStartMosaic = [Math.round(w * 0.15), Math.round(h * 0.15)];
+      if (!_routeEndMosaic) _routeEndMosaic = [Math.round(w * 0.85), Math.round(h * 0.85)];
+      fb.textContent = 'Auto-set landing/target — planning...'; fb.style.color = 'var(--cyan)';
+    } else {
+      fb.textContent = 'Set landing and target first'; fb.style.color = 'var(--amber)';
+      return;
+    }
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = 'PLANNING...'; }
-  fb.textContent = ''; fb.style.color = 'var(--text-dim)';
+  fb.textContent = 'Planning routes...'; fb.style.color = 'var(--cyan)';
+
   // Ensure mosaic info is loaded for route rendering
   if (!_mosaicInfo) {
     try { const mi = await fetch('/api/mosaic_info'); if (mi.ok) _mosaicInfo = await mi.json(); } catch(e) {}
   }
+  // Ensure Leaflet map is initialized
+  ensureLeafletMap();
+
   try {
     const r = await fetch('/api/plan_routes', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1465,21 +1479,33 @@ async function planRoutes(btn) {
       if (btn) flashBtn(btn, false);
     } else {
       _lastRouteData = d;
-      renderRouteCards(d); renderPathStatsCard(d);
-      fb.textContent = 'ROUTES UPDATED'; fb.style.color = 'var(--green)';
-      if (btn) flashBtn(btn, true);
       _mosaicRouteData = d;
-      // Draw routes immediately on the mosaic
-      console.log('planRoutes got data:', JSON.stringify(Object.keys(d)), '_mosaicInfo:', !!_mosaicInfo);
+      renderRouteCards(d); renderPathStatsCard(d);
+
+      // Count how many routes were found
+      let foundCount = 0;
+      for (const k of ['fastest','safest','balanced','ppo']) {
+        if (d[k] && d[k].status === 'found') foundCount++;
+      }
+      fb.textContent = `${foundCount} ROUTES FOUND — drawn on map`;
+      fb.style.color = 'var(--green)';
+      if (btn) flashBtn(btn, true);
+
+      // Draw routes on the mosaic map
       if (_mosaicInfo) {
-        console.log('Calling _updateRoutes with mosaicInfo w=', _mosaicInfo.width, 'h=', _mosaicInfo.height);
         _updateRoutes(d, _mosaicInfo);
       } else {
-        console.warn('planRoutes: _mosaicInfo is null, routes cannot be drawn');
+        fb.textContent += ' (map info missing — refresh page)';
+        fb.style.color = 'var(--amber)';
       }
       _updateEndpointMarkers();
     }
-  } catch(e) { fb.textContent='ERROR'; fb.style.color='var(--red)'; if(btn)flashBtn(btn,false); }
+  } catch(e) {
+    console.error('planRoutes error:', e);
+    fb.textContent = 'Route planning failed: ' + e.message;
+    fb.style.color = 'var(--red)';
+    if (btn) flashBtn(btn, false);
+  }
   if (btn) { btn.disabled = false; btn.textContent = 'PLAN ROUTES'; }
 }
 
@@ -2120,9 +2146,13 @@ async function _updateSlopeGrid(mosaicInfo) {
 
 // ─── Update route overlays ───────────────────────────────────────────────────
 function _updateRoutes(routes, mosaicInfo) {
-  if (!_routeLayer) { console.warn('_updateRoutes: _routeLayer is null'); return; }
+  if (!_routeLayer) {
+    console.warn('_updateRoutes: _routeLayer is null — trying ensureLeafletMap');
+    ensureLeafletMap();
+    if (!_routeLayer) { console.warn('_updateRoutes: still no _routeLayer after init'); return; }
+  }
   _routeLayer.clearLayers();
-  if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo'); return; }
+  if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo', !!routes, !!mosaicInfo); return; }
 
   const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
   const selected = routes.selected || 'safest';

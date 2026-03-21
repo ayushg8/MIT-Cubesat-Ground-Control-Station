@@ -7,7 +7,9 @@ from __future__ import annotations
 # and grid (row, col) space, and projects per-image hazard results onto
 # the grid cells that the image covers.
 
+import json
 import logging
+import os
 
 import numpy as np
 
@@ -488,3 +490,43 @@ class MosaicGrid:
         if self._slope_grid is None:
             return np.zeros((1, 1), dtype=np.float32)
         return self._slope_grid.copy()
+
+    def apply_roughness_costs(self, roughness_cost_grid: np.ndarray):
+        """Apply terrain roughness cost multipliers to the fine cost grid.
+
+        Multipliers are applied to the BASE cost (before any roughness),
+        not cumulatively, to avoid exponential cost blowup on repeated calls.
+        """
+        if self._fine_cost_grid is None:
+            return
+        # Save base costs on first call so we can reapply cleanly
+        if not hasattr(self, '_fine_base_cost_grid') or self._fine_base_cost_grid is None:
+            self._fine_base_cost_grid = self._fine_cost_grid.copy()
+        r, c = roughness_cost_grid.shape
+        fr, fc = self._fine_cost_grid.shape
+        mr, mc = min(r, fr), min(c, fc)
+        # Reset to base costs, then apply multipliers once
+        self._fine_cost_grid[:mr, :mc] = self._fine_base_cost_grid[:mr, :mc]
+        for row in range(mr):
+            for col in range(mc):
+                mult = roughness_cost_grid[row, col]
+                if mult > 1.0:
+                    self._fine_cost_grid[row, col] = self._fine_base_cost_grid[row, col] * mult
+
+    def restore_from_json(self, path: str):
+        """Restore grid state from a persisted cost_grid.json file."""
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            cost_data = data.get("cost_grid")
+            if cost_data:
+                self._cost_grid = np.array(cost_data, dtype=np.float32)
+                self._rows, self._cols = self._cost_grid.shape
+            hazard_data = data.get("hazard_grid")
+            if hazard_data:
+                self._hazard_grid = hazard_data
+            logger.info(f"MosaicGrid: restored from {path}")
+        except Exception as e:
+            logger.warning(f"MosaicGrid: could not restore from {path}: {e}")

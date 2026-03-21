@@ -1267,12 +1267,12 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
-let _mosaicVisibleRoutes = new Set(['fastest', 'safest', 'balanced', 'ppo']); // which routes are visible on map
+let _mosaicVisibleRoutes = new Set(['balanced']); // only show the best route
 
 function renderRouteCards(routes) {
-  const selected = routes.selected || 'safest';
-  const names = ['fastest', 'safest', 'balanced', 'ppo'];
-  const colours = { fastest: '#00ff88', safest: '#4488ff', balanced: '#ffaa00', ppo: '#ff44ff' };
+  const selected = routes.selected || 'balanced';
+  const names = ['balanced'];
+  const colours = { balanced: '#ffaa00' };
 
   const container = el('route-cards');
   container.innerHTML = '';
@@ -1333,7 +1333,7 @@ function toggleRouteVisible(name) {
 }
 
 function renderPathStatsCard(routes) {
-  const selected = routes.selected || 'safest';
+  const selected = routes.selected || 'balanced';
   const rd = routes[selected];
   const statsEl = el('path-stats-card');
   if (!rd) { statsEl.textContent = 'No route data'; return; }
@@ -2155,7 +2155,7 @@ function _updateRoutes(routes, mosaicInfo) {
   if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo', !!routes, !!mosaicInfo); return; }
 
   const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
-  const selected = routes.selected || 'safest';
+  const selected = routes.selected || 'balanced';
 
   const routeDefs = [
     {key:'fastest', color:'#00ff88', dashArray:'8 6', weight: 5},

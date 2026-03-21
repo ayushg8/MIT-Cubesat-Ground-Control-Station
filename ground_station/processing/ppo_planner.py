@@ -59,6 +59,56 @@ def is_available() -> bool:
     return _ppo_model is not None
 
 
+def _perpendicular_distance(point, line_start, line_end):
+    """Perpendicular distance from point to line segment."""
+    r, c = point
+    r0, c0 = line_start
+    r1, c1 = line_end
+    dr = r1 - r0
+    dc = c1 - c0
+    length_sq = dr * dr + dc * dc
+    if length_sq == 0:
+        return math.sqrt((r - r0) ** 2 + (c - c0) ** 2)
+    return abs(dr * (c0 - c) - dc * (r0 - r)) / math.sqrt(length_sq)
+
+
+def _rdp_simplify(path, epsilon):
+    """Ramer-Douglas-Peucker path simplification — keeps shape, removes noise."""
+    if len(path) <= 2:
+        return path
+    # Find the point furthest from the line between start and end
+    max_dist = 0
+    max_idx = 0
+    for i in range(1, len(path) - 1):
+        d = _perpendicular_distance(path[i], path[0], path[-1])
+        if d > max_dist:
+            max_dist = d
+            max_idx = i
+    # If max deviation exceeds epsilon, keep that point and recurse
+    if max_dist > epsilon:
+        left = _rdp_simplify(path[:max_idx + 1], epsilon)
+        right = _rdp_simplify(path[max_idx:], epsilon)
+        return left[:-1] + right
+    else:
+        return [path[0], path[-1]]
+
+
+def _smooth_path(path, cost_grid, impassable, rows, cols):
+    """Simplify PPO path: RDP to remove zigzags, keep at least ~6 waypoints."""
+    if len(path) <= 3:
+        return path
+    # Start with a small epsilon and increase until we get a reasonable number of points
+    # but keep enough points that the path still looks like a route
+    min_points = max(4, len(path) // 4)
+    epsilon = 0.8
+    result = _rdp_simplify(path, epsilon)
+    # If still too many points, increase epsilon
+    while len(result) > max(min_points, 8) and epsilon < 4.0:
+        epsilon += 0.3
+        result = _rdp_simplify(path, epsilon)
+    return result
+
+
 def plan_ppo_route(
     cost_grid: np.ndarray,
     start: tuple,
@@ -205,6 +255,18 @@ def plan_ppo_route(
                     break
         if trim_idx < len(path) - 1:
             path = path[:trim_idx + 1]
+
+    # Remove duplicate consecutive cells
+    if len(path) > 1:
+        deduped = [path[0]]
+        for p in path[1:]:
+            if p != deduped[-1]:
+                deduped.append(p)
+        path = deduped
+
+    # Smooth path: remove unnecessary zigzags via line-of-sight simplification
+    # Keep a waypoint only if the straight line to the next-next point is blocked
+    path = _smooth_path(path, cost_grid, impassable, rows, cols)
 
     # Compute cumulative slip risk: sum of normalized costs along path
     slip_risk = 0.0

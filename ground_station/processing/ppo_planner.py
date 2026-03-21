@@ -59,6 +59,56 @@ def is_available() -> bool:
     return _ppo_model is not None
 
 
+def _perpendicular_distance(point, line_start, line_end):
+    """Perpendicular distance from point to line segment."""
+    r, c = point
+    r0, c0 = line_start
+    r1, c1 = line_end
+    dr = r1 - r0
+    dc = c1 - c0
+    length_sq = dr * dr + dc * dc
+    if length_sq == 0:
+        return math.sqrt((r - r0) ** 2 + (c - c0) ** 2)
+    return abs(dr * (c0 - c) - dc * (r0 - r)) / math.sqrt(length_sq)
+
+
+def _rdp_simplify(path, epsilon):
+    """Ramer-Douglas-Peucker path simplification — keeps shape, removes noise."""
+    if len(path) <= 2:
+        return path
+    # Find the point furthest from the line between start and end
+    max_dist = 0
+    max_idx = 0
+    for i in range(1, len(path) - 1):
+        d = _perpendicular_distance(path[i], path[0], path[-1])
+        if d > max_dist:
+            max_dist = d
+            max_idx = i
+    # If max deviation exceeds epsilon, keep that point and recurse
+    if max_dist > epsilon:
+        left = _rdp_simplify(path[:max_idx + 1], epsilon)
+        right = _rdp_simplify(path[max_idx:], epsilon)
+        return left[:-1] + right
+    else:
+        return [path[0], path[-1]]
+
+
+def _smooth_path(path, cost_grid, impassable, rows, cols):
+    """Simplify PPO path: RDP to remove zigzags, keep at least ~6 waypoints."""
+    if len(path) <= 3:
+        return path
+    # Start with a small epsilon and increase until we get a reasonable number of points
+    # but keep enough points that the path still looks like a route
+    min_points = max(4, len(path) // 4)
+    epsilon = 0.8
+    result = _rdp_simplify(path, epsilon)
+    # If still too many points, increase epsilon
+    while len(result) > max(min_points, 8) and epsilon < 4.0:
+        epsilon += 0.3
+        result = _rdp_simplify(path, epsilon)
+    return result
+
+
 def plan_ppo_route(
     cost_grid: np.ndarray,
     start: tuple,
@@ -117,6 +167,8 @@ def plan_ppo_route(
     visit_count = {}
     stuck_threshold = 8
 
+    goal_threshold = max(1.5, min(3.0, gs * 0.05))  # scale with grid size
+
     for step in range(max_steps):
         r, c = pos
         rp, cp = r + half, c + half
@@ -124,6 +176,11 @@ def plan_ppo_route(
         imp_view = imp_pad[rp - half:rp + half + 1, cp - half:cp + half + 1]
 
         dist = math.sqrt((goal[0] - r) ** 2 + (goal[1] - c) ** 2)
+
+        # Check goal reached BEFORE computing next action
+        if dist < goal_threshold:
+            break
+
         dist_ch = np.full((VIEW_SIZE, VIEW_SIZE), dist / max_dist, dtype=np.float32)
         dr = (goal[0] - r) / (max_dist + 1e-8)
         dc = (goal[1] - c) / (max_dist + 1e-8)
@@ -136,6 +193,7 @@ def plan_ppo_route(
         obs = np.stack([cost_view, imp_view, dist_ch, dir_ch], axis=-1).flatten().astype(np.float32)
         action, _ = _ppo_model.predict(obs, deterministic=True)
 
+        moved = False
         if action < 8:
             mv_dr, mv_dc = MOVES[action]
             nr, nc = r + mv_dr, c + mv_dc
@@ -144,16 +202,45 @@ def plan_ppo_route(
                 pos_tuple = (int(pos[0]), int(pos[1]))
                 path.append(pos_tuple)
                 total_cost += float(cost_grid[nr, nc]) * DISTS[action]
+                moved = True
 
                 # Stuck detection
                 visit_count[pos_tuple] = visit_count.get(pos_tuple, 0) + 1
                 if visit_count[pos_tuple] >= stuck_threshold:
                     break
 
-        if dist < 3.0:
-            break
+        # If model chose stay (action=8) or move was blocked, count as stall
+        if not moved:
+            visit_count[tuple(pos)] = visit_count.get(tuple(pos), 0) + 1
+            if visit_count[tuple(pos)] >= stuck_threshold:
+                break
 
-    reached = math.sqrt((int(pos[0]) - goal[0]) ** 2 + (int(pos[1]) - goal[1]) ** 2) < 3.0
+    # Greedy finish: if PPO stalled near the goal, walk greedily to close the gap
+    final_dist = math.sqrt((int(pos[0]) - goal[0]) ** 2 + (int(pos[1]) - goal[1]) ** 2)
+    greedy_budget = max(10, int(final_dist * 2))
+    for _ in range(greedy_budget):
+        if final_dist < 0.5:
+            break
+        r, c = int(pos[0]), int(pos[1])
+        best_action = -1
+        best_d = final_dist
+        for ai, (mv_dr, mv_dc) in enumerate(MOVES):
+            nr, nc = r + mv_dr, c + mv_dc
+            if 0 <= nr < rows and 0 <= nc < cols and impassable[nr, nc] < 0.5:
+                d = math.sqrt((goal[0] - nr) ** 2 + (goal[1] - nc) ** 2)
+                if d < best_d:
+                    best_d = d
+                    best_action = ai
+        if best_action < 0:
+            break
+        mv_dr, mv_dc = MOVES[best_action]
+        nr, nc = r + mv_dr, c + mv_dc
+        pos = np.array([nr, nc])
+        path.append((int(nr), int(nc)))
+        total_cost += float(cost_grid[nr, nc]) * DISTS[best_action]
+        final_dist = best_d
+
+    reached = final_dist < max(1.5, goal_threshold)
 
     # Trim oscillation: remove repeated tail cells
     if len(path) > 2:
@@ -168,6 +255,18 @@ def plan_ppo_route(
                     break
         if trim_idx < len(path) - 1:
             path = path[:trim_idx + 1]
+
+    # Remove duplicate consecutive cells
+    if len(path) > 1:
+        deduped = [path[0]]
+        for p in path[1:]:
+            if p != deduped[-1]:
+                deduped.append(p)
+        path = deduped
+
+    # Smooth path: remove unnecessary zigzags via line-of-sight simplification
+    # Keep a waypoint only if the straight line to the next-next point is blocked
+    path = _smooth_path(path, cost_grid, impassable, rows, cols)
 
     # Compute cumulative slip risk: sum of normalized costs along path
     slip_risk = 0.0

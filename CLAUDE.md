@@ -17,7 +17,7 @@ See `docs/ARCHITECTURE.md` for the full ground station software architecture, co
 1. Everything is REAL. Every image comes from the real CubeSat camera. Every telemetry value comes from real sensors. No mock data.
 2. The GCS does NOT pull from the CubeSat. The CubeSat pushes to the GCS. The GCS just listens and reacts.
 3. Ground-side quality checks are DIFFERENT from CubeSat checks. CubeSat checks blur/exposure/motion. Ground checks texture sufficiency, contrast range, color validity — things that affect whether the CV pipeline can work with the image.
-4. Change detection does NOT use ORB feature matching (fails on sand). Uses SIFT feature matching and SSIM for alignment and differencing.
+4. Change detection uses object-level comparison (YOLO detection lists + ORB alignment) instead of pixel-level SSIM. Requires 2+ passes over the same terrain. Falls back to pixel differencing with histogram matching only when no YOLO data is available.
 5. Elevation mapping is NOT performed (photoclinometry subsystem removed by design). Shadow detection still runs for hazard classification.
 6. Mosaic uses continuous stitching (SIFT + homography). Images are placed into a growing canvas. No fixed grid — grid is derived dynamically from mosaic dimensions.
 7. Hazard classifier produces one classification per image, projected onto the dynamic mosaic grid cells the image covers.
@@ -29,8 +29,8 @@ See `docs/ARCHITECTURE.md` for the full ground station software architecture, co
 ## Dependencies
 ```bash
 pip install opencv-python numpy flask pillow
-# Optional for LLM: install ollama from https://ollama.com, then: ollama pull llama3.2
 ```
+Optional: **Ollama** for Log tab “Mission Q&A” only (`ollama pull llama3.2` or match `config.LLM_MODEL`). No AI advisor / specialist pipeline.
 
 ## File Structure Target
 ```

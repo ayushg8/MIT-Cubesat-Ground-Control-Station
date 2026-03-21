@@ -139,21 +139,6 @@ input.active-input { border-color: var(--cyan); }
 .pnl-badge.core { border-color: var(--amber); color: var(--amber); }
 .pnl-badge.green { border-color: var(--green); color: var(--green); }
 .pnl-body { padding: 14px; }
-.intel-block { background:#0d1220; border:1px solid #243048; padding:10px; margin-bottom:10px; }
-.intel-mini { font-family:var(--mono); font-size:11px; color:var(--dim); line-height:1.5; }
-.task-card { background:#101726; border:1px solid #243048; padding:10px; margin-bottom:8px; }
-.task-topline { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:6px; }
-.task-chip { font-family:var(--mono); font-size:10px; text-transform:uppercase; padding:2px 6px; border:1px solid var(--border); color:var(--dim); }
-.task-chip.critical { border-color:var(--red); color:var(--red); }
-.task-chip.high { border-color:var(--amber); color:var(--amber); }
-.task-chip.medium { border-color:var(--cyan); color:var(--cyan); }
-.task-card p { margin:4px 0; font-size:12px; color:var(--txt); }
-.task-card .meta { font-family:var(--mono); font-size:11px; color:var(--dim); }
-.feed-card { background:#101726; border:1px solid #243048; padding:10px; margin-bottom:8px; }
-.feed-title { color:var(--bright); font-size:13px; margin-bottom:4px; }
-.feed-meta { font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:4px; }
-.prompt-row { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px; }
-.prompt-btn { padding:6px 8px; font-size:10px !important; }
 
 /* ── Grid layouts ── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -590,6 +575,7 @@ input.active-input { border-color: var(--cyan); }
             <button id="btn-set-target" onclick="mosaicSetMode('target')" title="Click mosaic to set target point">SET TARGET</button>
             <button id="btn-auto-landing" onclick="autoRecommendLanding()" style="background:var(--cyan);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-RECOMMEND LANDING</button>
             <button id="btn-auto-target" onclick="autoRecommendTarget()" style="background:var(--red);color:#fff;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">AUTO-TARGET</button>
+            <button id="btn-plan-routes" onclick="planRoutes(this)" style="background:var(--green);color:#0a0e17;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;font-size:11px;">PLAN ROUTES</button>
             <span id="plan-routes-feedback" style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;"></span>
           </div>
           <div id="mosaic-map"></div>
@@ -690,30 +676,28 @@ input.active-input { border-color: var(--cyan); }
       <div class="pnl">
         <div class="pnl-hdr"><span class="pnl-title">Mission Q&amp;A</span></div>
         <div class="pnl-body" style="padding:8px;">
-          <div class="intel-block">
+          <div class="briefing-box">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
               <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Operator Briefing</span>
               <button type="button" onclick="loadMissionIntel(true)">LLAMA BRIEF</button>
             </div>
             <div id="briefing-headline" class="briefing-headline">No mission briefing yet.</div>
             <ul id="briefing-bullets" class="briefing-list"></ul>
-            <div id="briefing-ai-confidence" class="intel-mini" style="margin-top:6px;"></div>
             <div id="briefing-llm" style="white-space:pre-wrap;color:var(--dim);font-size:11px;margin-top:6px;"></div>
           </div>
-          <div class="intel-block">
+          <div class="task-box">
             <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Priority Task Queue</div>
-            <div id="task-queue"></div>
+            <ul id="task-queue" class="task-list"></ul>
           </div>
-          <div class="intel-block">
-            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Mission Events</div>
-            <div id="science-feed"></div>
+          <div class="task-box">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;">Science Feed</div>
+            <ul id="science-feed" class="science-feed"></ul>
           </div>
           <div id="llm-bar">
             <span style="font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;">Ask</span>
             <input id="llm-input" type="text" placeholder="Ask about mission state..." onkeydown="if(event.key==='Enter')sendLLM()">
             <button type="button" onclick="sendLLM()">ASK</button>
           </div>
-          <div id="llm-prompts" class="prompt-row"></div>
           <div id="llm-response"></div>
         </div>
       </div>
@@ -1283,12 +1267,12 @@ async function pollRoutes() {
   } catch(e) {}
 }
 
-let _mosaicVisibleRoutes = new Set(['fastest', 'safest', 'balanced']); // which routes are visible on map
+let _mosaicVisibleRoutes = new Set(['balanced']); // only show the best route
 
 function renderRouteCards(routes) {
-  const selected = routes.selected || 'safest';
-  const names = ['fastest', 'safest', 'balanced'];
-  const colours = { fastest: '#00ff88', safest: '#4488ff', balanced: '#ffaa00' };
+  const selected = routes.selected || 'balanced';
+  const names = ['balanced'];
+  const colours = { balanced: '#ffaa00' };
 
   const container = el('route-cards');
   container.innerHTML = '';
@@ -1349,7 +1333,7 @@ function toggleRouteVisible(name) {
 }
 
 function renderPathStatsCard(routes) {
-  const selected = routes.selected || 'safest';
+  const selected = routes.selected || 'balanced';
   const rd = routes[selected];
   const statsEl = el('path-stats-card');
   if (!rd) { statsEl.textContent = 'No route data'; return; }
@@ -1459,18 +1443,31 @@ function getRouteStart() { return _routeStartMosaic ? [_routeStartMosaic[0], _ro
 function getRouteEnd()   { return _routeEndMosaic ? [_routeEndMosaic[0], _routeEndMosaic[1]] : null; }
 
 async function planRoutes(btn) {
-  if (!_routeStartMosaic || !_routeEndMosaic) {
-    const fb = el('plan-routes-feedback');
-    fb.textContent = 'Set landing and target first'; fb.style.color = 'var(--amber)';
-    return;
-  }
   const fb = el('plan-routes-feedback');
+
+  // Auto-set default landing/target if not set and mosaic is loaded
+  if (!_routeStartMosaic || !_routeEndMosaic) {
+    if (_mosaicInfo && _mosaicInfo.width > 0 && _mosaicInfo.height > 0) {
+      const w = _mosaicInfo.width, h = _mosaicInfo.height;
+      if (!_routeStartMosaic) _routeStartMosaic = [Math.round(w * 0.15), Math.round(h * 0.15)];
+      if (!_routeEndMosaic) _routeEndMosaic = [Math.round(w * 0.85), Math.round(h * 0.85)];
+      fb.textContent = 'Auto-set landing/target — planning...'; fb.style.color = 'var(--cyan)';
+    } else {
+      fb.textContent = 'Set landing and target first'; fb.style.color = 'var(--amber)';
+      return;
+    }
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = 'PLANNING...'; }
-  fb.textContent = ''; fb.style.color = 'var(--text-dim)';
+  fb.textContent = 'Planning routes...'; fb.style.color = 'var(--cyan)';
+
   // Ensure mosaic info is loaded for route rendering
   if (!_mosaicInfo) {
     try { const mi = await fetch('/api/mosaic_info'); if (mi.ok) _mosaicInfo = await mi.json(); } catch(e) {}
   }
+  // Ensure Leaflet map is initialized
+  ensureLeafletMap();
+
   try {
     const r = await fetch('/api/plan_routes', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1482,21 +1479,33 @@ async function planRoutes(btn) {
       if (btn) flashBtn(btn, false);
     } else {
       _lastRouteData = d;
-      renderRouteCards(d); renderPathStatsCard(d);
-      fb.textContent = 'ROUTES UPDATED'; fb.style.color = 'var(--green)';
-      if (btn) flashBtn(btn, true);
       _mosaicRouteData = d;
-      // Draw routes immediately on the mosaic
-      console.log('planRoutes got data:', JSON.stringify(Object.keys(d)), '_mosaicInfo:', !!_mosaicInfo);
+      renderRouteCards(d); renderPathStatsCard(d);
+
+      // Count how many routes were found
+      let foundCount = 0;
+      for (const k of ['fastest','safest','balanced','ppo']) {
+        if (d[k] && d[k].status === 'found') foundCount++;
+      }
+      fb.textContent = `${foundCount} ROUTES FOUND — drawn on map`;
+      fb.style.color = 'var(--green)';
+      if (btn) flashBtn(btn, true);
+
+      // Draw routes on the mosaic map
       if (_mosaicInfo) {
-        console.log('Calling _updateRoutes with mosaicInfo w=', _mosaicInfo.width, 'h=', _mosaicInfo.height);
         _updateRoutes(d, _mosaicInfo);
       } else {
-        console.warn('planRoutes: _mosaicInfo is null, routes cannot be drawn');
+        fb.textContent += ' (map info missing — refresh page)';
+        fb.style.color = 'var(--amber)';
       }
       _updateEndpointMarkers();
     }
-  } catch(e) { fb.textContent='ERROR'; fb.style.color='var(--red)'; if(btn)flashBtn(btn,false); }
+  } catch(e) {
+    console.error('planRoutes error:', e);
+    fb.textContent = 'Route planning failed: ' + e.message;
+    fb.style.color = 'var(--red)';
+    if (btn) flashBtn(btn, false);
+  }
   if (btn) { btn.disabled = false; btn.textContent = 'PLAN ROUTES'; }
 }
 
@@ -2137,12 +2146,16 @@ async function _updateSlopeGrid(mosaicInfo) {
 
 // ─── Update route overlays ───────────────────────────────────────────────────
 function _updateRoutes(routes, mosaicInfo) {
-  if (!_routeLayer) { console.warn('_updateRoutes: _routeLayer is null'); return; }
+  if (!_routeLayer) {
+    console.warn('_updateRoutes: _routeLayer is null — trying ensureLeafletMap');
+    ensureLeafletMap();
+    if (!_routeLayer) { console.warn('_updateRoutes: still no _routeLayer after init'); return; }
+  }
   _routeLayer.clearLayers();
-  if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo'); return; }
+  if (!routes || !mosaicInfo) { console.warn('_updateRoutes: no routes or mosaicInfo', !!routes, !!mosaicInfo); return; }
 
   const cellPx = (mosaicInfo.grid || {}).cell_size_px || 80;
-  const selected = routes.selected || 'safest';
+  const selected = routes.selected || 'balanced';
 
   const routeDefs = [
     {key:'fastest', color:'#00ff88', dashArray:'8 6', weight: 5},
@@ -2707,52 +2720,28 @@ async function sendLLM() {
   }
 }
 
-function askPreset(question) {
-  el('llm-input').value = question;
-  sendLLM();
-}
-
 function renderBriefing(d) {
   const deterministic = d.deterministic || {};
   el('briefing-headline').textContent = deterministic.headline || 'No mission briefing yet.';
   const bullets = deterministic.bullets || [];
   el('briefing-bullets').innerHTML = bullets.map(b => `<li>${b}</li>`).join('');
-  el('briefing-ai-confidence').textContent = deterministic.ai_confidence || '';
   el('briefing-llm').textContent = d.llm || '';
-  const prompts = deterministic.suggested_questions || [];
-  el('llm-prompts').innerHTML = prompts.map(q =>
-    `<button class="prompt-btn" type="button" onclick="askPreset(${JSON.stringify(q).replace(/"/g, '&quot;')})">${q}</button>`
-  ).join('');
 }
 
 function renderTaskQueue(d) {
   const tasks = d.tasks || [];
   const feed = d.science_feed || [];
-  el('task-queue').innerHTML = tasks.map(task => `
-    <div class="task-card">
-      <div class="task-topline">
-        <div>
-          <div><strong>${task.command_preview || `${task.cmd} (${task.row},${task.col})`}</strong></div>
-          <div class="meta">${task.family || task.category || 'task'} | score ${(task.score ?? 0).toFixed(3)}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="task-chip ${task.priority_band || 'medium'}">${task.priority_band || 'medium'}</span>
-          <button class="task-btn" type="button" onclick="applyTask('${task.cmd}', ${task.row}, ${task.col})">SEND</button>
-        </div>
-      </div>
-      <p><strong>Why now:</strong> ${task.why_now || (task.reasons || []).join('; ') || 'No rationale available.'}</p>
-      <p><strong>Expected gain:</strong> ${task.expected_gain || 'Improves mission state.'}</p>
-      <div class="meta">Confidence ${task.confidence_label || '--'} | Evidence ${task.observation_strength || '--'} | Freshness ${task.freshness || '--'}</div>
-    </div>
-  `).join('') || '<div class="intel-mini">No queued tasks.</div>';
+  el('task-queue').innerHTML = tasks.map(task => {
+    const reason = (task.reasons || []).join('; ');
+    return `<li><strong>${task.cmd}</strong> cell (${task.row},${task.col}) score=${(task.score ?? 0).toFixed(3)} ` +
+      `<button class="task-btn" type="button" onclick="applyTask('${task.cmd}', ${task.row}, ${task.col})">SEND</button><br>` +
+      `<span>${reason}</span></li>`;
+  }).join('') || '<li>No queued tasks.</li>';
   el('science-feed').innerHTML = feed.slice(0, 6).map(item => {
-    const cell = Array.isArray(item.cell) ? `Cell (${item.cell[0]},${item.cell[1]})` : 'No cell';
-    return `<div class="feed-card">
-      <div class="feed-title">${item.title || `${item.source || 'event'} update`}</div>
-      <div>${item.summary || item.notes || 'No event summary available.'}</div>
-      <div class="feed-meta">${cell} | ${item.source || 'event'}${item.filename ? ` | ${item.filename}` : ''}</div>
-    </div>`;
-  }).join('') || '<div class="intel-mini">No mission events yet.</div>';
+    const cell = Array.isArray(item.cell) ? `(${item.cell[0]},${item.cell[1]})` : '--';
+    return `<li><strong>${item.source || 'event'}</strong> ${item.filename || '--'} ${cell}<br>` +
+      `<span>${item.notes || ''}</span></li>`;
+  }).join('') || '<li>No science products yet.</li>';
 }
 
 async function loadMissionIntel(withLLM = false) {

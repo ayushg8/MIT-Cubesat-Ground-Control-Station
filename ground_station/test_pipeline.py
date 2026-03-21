@@ -161,9 +161,9 @@ def test_hazard_classifier(image_path: str, shadow_result: dict | None) -> dict 
         _info(f"contours              = {details.get('significant_contour_count', '--')}")
         _info(f"hazard_map_path       = {map_path}")
 
-        valid_classes = {"SAFE", "MODERATE", "SHADOW", "HAZARD", "IMPASSABLE"}
+        valid_classes = {"SAFE", "MODERATE", "SHADOW", "HAZARD", "CRATER", "IMPASSABLE"}
         valid_costs   = {config.COST_SAFE, config.COST_MODERATE, config.COST_SHADOW,
-                         config.COST_HAZARD, config.COST_IMPASSABLE}
+                         config.COST_HAZARD, config.COST_CRATER, config.COST_IMPASSABLE}
 
         checks = {
             "hazard_class is valid string": cls in valid_classes,
@@ -244,6 +244,16 @@ def test_route_planner() -> dict | None:
         else:
             _fail("expected 'no viable route'",
                   f"got '{blocked_result['status']}'")
+
+        print("\n[3c] Route Planner — diagonal corner cut must be rejected")
+        corner = np.full((3, 3), config.COST_SAFE, dtype=np.int32)
+        corner[0, 1] = config.COST_IMPASSABLE
+        corner[1, 0] = config.COST_IMPASSABLE
+        corner_result = planner.plan(corner, None, (0, 0), (2, 2))
+        if corner_result["status"] == "no viable route":
+            _pass("rejects diagonal corner cutting through blocked cells")
+        else:
+            _fail("corner-cutting guard failed", f"got '{corner_result['status']}'")
 
         return result if all_ok else result
 

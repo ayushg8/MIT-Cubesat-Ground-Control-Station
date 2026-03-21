@@ -113,10 +113,6 @@ MIT-Cubesat-Ground-Control-Station/
 │   │   └── templates/
 │   │       └── index.html            # Single-page dashboard (~2400 lines)
 │   │
-│   ├── llm/
-│   │   ├── interface.py              # Optional Ollama integration
-│   │   └── system_prompt.txt
-│   │
 │   ├── models/                       # ML models
 │   │   ├── download_model.py         # Download lunar YOLO from Roboflow
 │   │   └── terrain_combined/         # YOLO training data
@@ -272,7 +268,7 @@ pipeline._process_locked(image_path, metadata, ground_quality)
 | File         | Key Content                                      |
 |--------------|---------------------------------------------------|
 | `app.py`     | 50+ Flask routes: status, coverage, routes, images, commands, export, etc. |
-| `index.html` | Single-page UI: heatmap, route cards, change detection, coverage, telemetry, LLM |
+| `index.html` | Single-page UI: heatmap, route cards, change detection, coverage, telemetry |
 
 ---
 
@@ -390,7 +386,7 @@ pipeline._process_locked(image_path, metadata, ground_quality)
 | /api/set_cell       | `{row, col}`                              |
 | /api/reset_mission  | (none)                                    |
 | /api/clear_last_pass| (none)                                    |
-| /api/llm_query      | `{question}`                              |
+| /api/llm_query      | `{question}` — optional Ollama Q&A from `mission_state` |
 
 See `FRONTEND_SPEC_FOR_GOOGLE_STITCH.md` for full API schemas.
 
@@ -438,7 +434,7 @@ pip install opencv-python numpy flask pillow torch lightglue
 - **PPO:** `PPO Training/` (optional)
 
 ### Optional
-- **Ollama:** For LLM query panel (`ollama pull llama3.2`)
+- **Ollama:** Log tab “Mission Q&A” — local model (`config.LLM_MODEL`, default `llama3.2`). Install from [ollama.com](https://ollama.com), then e.g. `ollama pull llama3.2`.
 
 ---
 

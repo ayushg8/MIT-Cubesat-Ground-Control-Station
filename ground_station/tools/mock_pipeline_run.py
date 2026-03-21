@@ -410,12 +410,15 @@ def main():
                 pipeline.process(jpg_path, metadata, quality)
                 elapsed = time.monotonic() - t0
                 mark_downlink_complete()
+                # Record cumulative downlink stats for overview panel
+                mission_state.record_downlink_bytes(file_size, elapsed, True)
                 global_sent += 1
                 print(f" ACK ({elapsed:.1f}s)")
             except Exception as e:
                 elapsed = time.monotonic() - t0
                 dl = get_downlink_state()
                 dl.set_status("failed", str(e))
+                mission_state.record_downlink_bytes(file_size, elapsed, False)
                 print(f" FAIL ({elapsed:.1f}s) — {e}")
 
             # Brief pause between images

@@ -125,6 +125,13 @@ class RoutePlanner:
             }
         """
         rows, cols = cost_grid.shape
+        impassable_count = int((cost_grid >= config.COST_IMPASSABLE).sum())
+        logger.info(
+            f"RoutePlanner: grid {rows}x{cols}, "
+            f"min={cost_grid.min():.0f} max={cost_grid.max():.0f} mean={cost_grid.mean():.1f}, "
+            f"impassable={impassable_count}/{rows*cols} ({impassable_count/(rows*cols)*100:.0f}%), "
+            f"start={start} end={end}"
+        )
 
         # Build modified cost grids
         fastest_grid  = cost_grid.copy()

@@ -1,0 +1,9 @@
+names:
+- Boulders
+- Crater
+- Plan surface
+- Plane Surface
+nc: 4
+test: /Users/dullet/Ayush/Cubesat/MIT-Cubesat-Ground-Control-Station/ground_station/models/roboflow_dataset_v2/test/images
+train: /Users/dullet/Ayush/Cubesat/MIT-Cubesat-Ground-Control-Station/ground_station/models/roboflow_dataset_v2/train/images
+val: /Users/dullet/Ayush/Cubesat/MIT-Cubesat-Ground-Control-Station/ground_station/models/roboflow_dataset_v2/valid/images

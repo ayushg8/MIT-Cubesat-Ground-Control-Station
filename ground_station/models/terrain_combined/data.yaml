@@ -1,0 +1,8 @@
+names:
+- crater
+- boulder
+- sand
+- shadow
+nc: 4
+train: /Users/dullet/Ayush/Cubesat/MIT-Cubesat-Ground-Control-Station/ground_station/models/terrain_combined/train/images
+val: /Users/dullet/Ayush/Cubesat/MIT-Cubesat-Ground-Control-Station/ground_station/models/terrain_combined/valid/images

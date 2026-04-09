@@ -6,7 +6,7 @@
 LISTEN_PORT = 5000
 COMMAND_PORT = 5001
 LISTEN_HOST = "0.0.0.0"
-CUBESAT_IP = "192.168.1.229"   # CubeSat Raspberry Pi 4 on shared WiFi
+CUBESAT_IP = "192.168.2.24"    # CubeSat Raspberry Pi 4 (hardwire ethernet)
 
 # === STORAGE ===
 RECEIVED_DIR = "data/received_images"

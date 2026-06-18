@@ -9,6 +9,7 @@
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 
 
@@ -17,6 +18,17 @@ class ValidationResult:
     valid: bool
     reason: str = ""       # Human-readable failure reason; empty on success
     computed_md5: str = "" # Always filled in (useful for logging even on failure)
+
+
+def validate_filename(filename: str) -> ValidationResult:
+    """Reject absolute paths and traversal before writing an uploaded file."""
+    if not isinstance(filename, str) or not filename:
+        return ValidationResult(False, "Filename must be a non-empty string")
+    if os.path.isabs(filename) or os.path.basename(filename) != filename:
+        return ValidationResult(False, "Filename must not contain a path")
+    if filename in {".", ".."} or "\x00" in filename:
+        return ValidationResult(False, "Filename contains invalid characters")
+    return ValidationResult(True)
 
 
 def validate_transfer(data: bytes, declared_size: int, declared_md5: str, metadata: dict) -> ValidationResult:

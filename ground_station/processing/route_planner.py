@@ -6,8 +6,7 @@ from __future__ import annotations
 #         plus route map images.
 #
 # 8-connected A*: diagonal moves cost sqrt(2) * destination_cell_cost.
-# Heuristic: Manhattan distance (fast; slightly inadmissible for diagonals but
-# good enough for an 8×8 grid — the path quality difference is negligible).
+# Heuristic: octile distance, which is admissible for 8-connected movement.
 #
 # IMPASSABLE cells (cost=999) are treated as walls and never entered.
 # If no path exists → status="no viable route". This is a valid demo result
@@ -475,7 +474,9 @@ def _astar(cost_grid: np.ndarray, start: tuple, end: tuple, rows: int, cols: int
     Returns ordered list of (row, col) tuples from start to end, or None.
     """
     def h(cell):
-        return abs(cell[0] - end[0]) + abs(cell[1] - end[1])
+        dr = abs(cell[0] - end[0])
+        dc = abs(cell[1] - end[1])
+        return max(dr, dc) + (_SQRT2 - 1.0) * min(dr, dc)
 
     open_heap = []          # (f, g, cell)
     heapq.heappush(open_heap, (h(start), 0.0, start))
@@ -503,6 +504,13 @@ def _astar(cost_grid: np.ndarray, start: tuple, end: tuple, rows: int, cols: int
                 continue
 
             diagonal = (dr != 0 and dc != 0)
+            if diagonal:
+                # A rover cannot squeeze diagonally between two blocked cells.
+                if (
+                    cost_grid[cr + dr, cc] >= config.COST_IMPASSABLE
+                    or cost_grid[cr, cc + dc] >= config.COST_IMPASSABLE
+                ):
+                    continue
             move_cost = (_SQRT2 if diagonal else 1.0) * cell_cost
             tentative_g = g + move_cost
 

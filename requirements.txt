@@ -1,0 +1,6 @@
+# Core ground-station runtime and test dependencies.
+Flask>=3.0,<4
+numpy>=1.26,<3
+opencv-python-headless>=4.9,<5
+paramiko>=3.4,<5
+scikit-image>=0.22,<1

@@ -35,6 +35,7 @@ import config
 # ── Paths ────────────────────────────────────────────────────────────────────
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 _IMG_SOURCES = [
+    os.path.join(_REPO, "MIT-BWSI-Cubesat", "Images"),
     os.path.join(_REPO, "MIT-BWSI-Cubesat-Flight-Software", "Images"),
     os.path.join(_REPO, "yolo_training", "dataset_clean", "train", "images"),
     os.path.join(_REPO, "yolo_training", "dataset_clean", "valid", "images"),

@@ -23,7 +23,7 @@ import time
 import config
 import protocol
 from receiver.downlink_state import get_state as get_downlink_state
-from receiver.packet_handler import validate_transfer
+from receiver.packet_handler import validate_filename, validate_transfer
 from receiver.quality_check import run_ground_quality_check
 from receiver.telemetry_parser import parse_and_save_telemetry
 
@@ -67,15 +67,22 @@ def _recv_exact(sock, n):
 
 def _read_header(sock):
     """Read bytes until newline, parse as JSON. Returns dict."""
-    raw = b""
+    raw = bytearray()
     while True:
         byte = sock.recv(1)
         if not byte:
             raise ConnectionError("Socket closed while reading header")
         if byte == b"\n":
             break
-        raw += byte
-    return json.loads(raw.decode("utf-8"))
+        raw.extend(byte)
+        if len(raw) > config.MAX_HEADER_BYTES:
+            raise ValueError(
+                f"Header exceeds {config.MAX_HEADER_BYTES:,}-byte safety limit"
+            )
+    header = json.loads(raw.decode("utf-8"))
+    if not isinstance(header, dict):
+        raise ValueError("Transfer header must be a JSON object")
+    return header
 
 
 def _handle_connection(conn, addr):
@@ -96,6 +103,26 @@ def _handle_connection(conn, addr):
             declared_md5 = header.get("md5", "")
             metadata = header.get("metadata", {})
 
+            filename_result = validate_filename(filename)
+            if not filename_result.valid:
+                logger.warning("Rejected unsafe filename %r: %s", filename, filename_result.reason)
+                conn.sendall(protocol.NACK)
+                continue
+
+            if (
+                not isinstance(declared_size, int)
+                or isinstance(declared_size, bool)
+                or declared_size < 0
+                or declared_size > config.MAX_TRANSFER_BYTES
+            ):
+                logger.warning(
+                    "Rejected transfer size %r (allowed range: 0..%d)",
+                    declared_size,
+                    config.MAX_TRANSFER_BYTES,
+                )
+                conn.sendall(protocol.NACK)
+                continue
+
             if transfer_type == "image":
                 _handle_image(conn, filename, declared_size, declared_md5, metadata)
             elif transfer_type == "telemetry":
@@ -106,7 +133,7 @@ def _handle_connection(conn, addr):
                 logger.warning(f"Unknown transfer type '{transfer_type}' from {addr}")
                 conn.sendall(protocol.NACK)
 
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
         logger.error(f"Bad header JSON from {addr}: {e}")
         try:
             conn.sendall(protocol.NACK)

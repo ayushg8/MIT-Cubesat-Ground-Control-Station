@@ -2,11 +2,21 @@
 # All physical setup values marked 0.0 MUST be measured from the real physical
 # setup and filled in before demo day. See docs/ARCHITECTURE.md section 15.
 
+import os
+
+
+def _env_int(name, default):
+    """Read an integer environment override while keeping defaults explicit."""
+    return int(os.getenv(name, str(default)))
+
+
 # === NETWORK ===
-LISTEN_PORT = 5000
-COMMAND_PORT = 5001
-LISTEN_HOST = "0.0.0.0"
-CUBESAT_IP = "192.168.1.229"   # CubeSat Raspberry Pi 4 on shared WiFi
+LISTEN_PORT = _env_int("GCS_LISTEN_PORT", 5000)
+COMMAND_PORT = _env_int("GCS_COMMAND_PORT", 5001)
+LISTEN_HOST = os.getenv("GCS_LISTEN_HOST", "0.0.0.0")
+CUBESAT_IP = os.getenv("CUBESAT_IP", "192.168.1.229")
+MAX_HEADER_BYTES = _env_int("GCS_MAX_HEADER_BYTES", 16 * 1024)
+MAX_TRANSFER_BYTES = _env_int("GCS_MAX_TRANSFER_BYTES", 25 * 1024 * 1024)
 
 # === STORAGE ===
 RECEIVED_DIR = "data/received_images"
@@ -77,7 +87,7 @@ MOSAIC_BLEND_LEVELS = 4            # Laplacian pyramid levels for multi-band ble
 MOSAIC_EXPOSURE_GAIN_RANGE = (0.5, 2.0)  # Clamp exposure gain to this range
 
 # === DASHBOARD ===
-DASHBOARD_PORT = 3000
+DASHBOARD_PORT = _env_int("GCS_DASHBOARD_PORT", 3000)
 DASHBOARD_REFRESH_SEC = 2
 
 # === UNCERTAINTY-AWARE COSTS ===

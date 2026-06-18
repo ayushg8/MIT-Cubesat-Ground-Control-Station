@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - working-directory: ground_station
+        run: |
+          python -m compileall -q .
+          python -m unittest -v test_packet_handler.py test_change_detector.py
+          python test_mission_intelligence.py
+          python test_pipeline.py
+          python test_receiver.py

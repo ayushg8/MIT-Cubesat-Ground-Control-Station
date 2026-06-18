@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Optional training and learned-planning features.
+roboflow>=1.1,<2
+stable-baselines3>=2.3,<3
+ultralytics>=8.2,<9

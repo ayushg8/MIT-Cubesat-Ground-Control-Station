@@ -85,12 +85,12 @@ def _setup_logging():
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    # 1. Logging first so everything below is visible
+    # 1. Create runtime directories before attaching the file logger.
+    _create_dirs()
     _setup_logging()
     logger = logging.getLogger(__name__)
 
     # 2. Directories
-    _create_dirs()
     logger.info("Data directories verified")
 
     # 3. Core objects

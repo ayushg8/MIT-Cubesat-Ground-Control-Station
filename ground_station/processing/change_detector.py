@@ -74,6 +74,16 @@ class ChangeDetector:
         Returns dict with change_map_path, change_events, change_summary,
         or None if either image cannot be read.
         """
+        if pass_before >= pass_after:
+            logger.info(
+                "ChangeDetector: skipping non-sequential comparison for cell %s "
+                "(pass %s vs %s)",
+                grid_cell,
+                pass_before,
+                pass_after,
+            )
+            return None
+
         prev_gray = _load_gray(prev_image_path)
         new_gray  = _load_gray(new_image_path)
 
@@ -144,7 +154,8 @@ class ChangeDetector:
             new_mean  = float(aligned_new[contour_mask > 0].mean())
             change_type = "darkened" if new_mean < prev_mean else "brightened"
 
-            area_cm2 = None  # GSD not available — area reported in pixels only
+            px_per_cm = max(float(config.MOSAIC_PX_PER_CM), 1e-6)
+            area_cm2 = round(area_px / (px_per_cm * px_per_cm), 3)
             description = _describe(change_type, area_cm2)
 
             change_events.append({
@@ -157,6 +168,7 @@ class ChangeDetector:
                 "centroid": [cx, cy],
                 "bbox": [bx, by, bw, bh],
                 "type": change_type,
+                "method": "pixel_diff",
                 "mean_difference": round(mean_diff, 1),
                 "ssim_score": round(ssim_score, 4),
                 "alignment_confidence": round(alignment_confidence, 3),
@@ -168,6 +180,17 @@ class ChangeDetector:
         # ── YOLO-assisted classification ──
         if change_events and (yolo_before or yolo_after):
             _classify_changes_with_yolo(change_events, yolo_before or [], yolo_after or [])
+
+        if yolo_before or yolo_after:
+            event_id = _append_yolo_object_events(
+                change_events,
+                yolo_before or [],
+                yolo_after or [],
+                grid_cell,
+                pass_before,
+                pass_after,
+                event_id,
+            )
 
         # ── Persistence check ──
         if change_events and all_cell_entries and len(all_cell_entries) >= 3:
@@ -181,6 +204,7 @@ class ChangeDetector:
 
         change_summary = {
             "total_events": len(change_events),
+            "total_changed_area_px": sum(e["area_px"] for e in change_events),
             "total_changed_area_cm2": round(total_area_cm2, 3),
             "largest_change_cm2": round(largest_cm2, 3),
             "types": {
@@ -530,6 +554,103 @@ def _classify_changes_with_yolo(change_events, yolo_before, yolo_after):
     classified = sum(1 for e in change_events if "yolo_class" in e)
     if classified:
         logger.info(f"YOLO-assisted change classification: {classified}/{len(change_events)} events classified")
+
+
+def _append_yolo_object_events(
+    change_events,
+    yolo_before,
+    yolo_after,
+    grid_cell,
+    pass_before,
+    pass_after,
+    event_id,
+):
+    """Add semantic moved/new/removed events from matched detector boxes."""
+    unmatched_after = set(range(len(yolo_after)))
+    px_per_cm = max(float(config.MOSAIC_PX_PER_CM), 1e-6)
+
+    for before in yolo_before:
+        before_box = _yolo_bbox_to_xywh(before)
+        before_class = before.get("class")
+        bx = before_box[0] + before_box[2] / 2
+        by = before_box[1] + before_box[3] / 2
+
+        candidates = []
+        for index in unmatched_after:
+            after = yolo_after[index]
+            if after.get("class") != before_class:
+                continue
+            after_box = _yolo_bbox_to_xywh(after)
+            ax = after_box[0] + after_box[2] / 2
+            ay = after_box[1] + after_box[3] / 2
+            candidates.append(((ax - bx) ** 2 + (ay - by) ** 2, index, after_box))
+
+        if not candidates:
+            change_events.append(_object_event(
+                event_id, grid_cell, pass_before, pass_after, before_box,
+                "removed_object", before, px_per_cm,
+            ))
+            event_id += 1
+            continue
+
+        distance_sq, match_index, after_box = min(candidates)
+        unmatched_after.remove(match_index)
+        displacement = distance_sq ** 0.5
+        movement_threshold = max(3.0, 0.08 * max(before_box[2], before_box[3]))
+        if displacement >= movement_threshold:
+            change_events.append(_object_event(
+                event_id, grid_cell, pass_before, pass_after, after_box,
+                "moved", yolo_after[match_index], px_per_cm,
+                displacement_px=round(displacement, 2),
+            ))
+            event_id += 1
+
+    for index in sorted(unmatched_after):
+        detection = yolo_after[index]
+        change_events.append(_object_event(
+            event_id, grid_cell, pass_before, pass_after,
+            _yolo_bbox_to_xywh(detection), "new_object", detection, px_per_cm,
+        ))
+        event_id += 1
+
+    return event_id
+
+
+def _object_event(
+    event_id,
+    grid_cell,
+    pass_before,
+    pass_after,
+    bbox,
+    change_type,
+    detection,
+    px_per_cm,
+    displacement_px=None,
+):
+    x, y, width, height = bbox
+    area_px = max(0, width) * max(0, height)
+    result = {
+        "id": event_id,
+        "grid_cell": list(grid_cell),
+        "pass_before": pass_before,
+        "pass_after": pass_after,
+        "area_px": int(area_px),
+        "area_cm2": round(area_px / (px_per_cm * px_per_cm), 3),
+        "centroid": [int(x + width / 2), int(y + height / 2)],
+        "bbox": [int(x), int(y), int(width), int(height)],
+        "type": change_type,
+        "method": "object_tracking",
+        "yolo_class": detection.get("class", "object"),
+        "yolo_confidence": detection.get("confidence", 0.0),
+        "persistence": False,
+        "description": (
+            f"{change_type.replace('_', ' ').title()}: "
+            f"{detection.get('class', 'object')}"
+        ),
+    }
+    if displacement_px is not None:
+        result["displacement_px"] = displacement_px
+    return result
 
 
 def _describe(change_type: str, area_cm2: float | None,

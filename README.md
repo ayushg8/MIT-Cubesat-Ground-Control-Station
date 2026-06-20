@@ -1,159 +1,80 @@
-# MuraltZ CubeSat Ground Control Station
+# MuraltZ CubeSat — Ground Control Station
 
-Ground software for an MIT Beaver Works Summer Institute CubeSat prototype that
-turns constrained image downlinks into an operator-ready terrain map. The system
-receives imagery and telemetry, verifies each transfer, builds a continuous
-mosaic, identifies hazards and changes, and plans traversable routes.
+Ground software for a CubeSat prototype. It receives throttled image and telemetry downlinks over TCP, stitches the images into a mosaic, detects surface changes between passes, plans hazard-aware routes across the imaged terrain, and drives the whole mission from a single-page operator dashboard. Built at the MIT Beaver Works Summer Institute.
 
-> Companion repository: [MuraltZ flight software](https://github.com/Ayush1298567/MIT-BWSI-Cubesat)
+The companion flight software lives in [MIT-BWSI-Cubesat](https://github.com/Ayush1298567/MIT-BWSI-Cubesat).
 
-## System at a glance
+## Overview
 
-```mermaid
-flowchart LR
-    Pi["CubeSat<br/>Raspberry Pi 4"] -->|"TCP 5000<br/>images + telemetry"| RX["Validated receiver<br/>size + MD5 + safety limits"]
-    RX --> CV["Vision pipeline"]
-    CV --> Mosaic["Continuous mosaic<br/>SIFT registration"]
-    CV --> Terrain["Terrain understanding<br/>shadows + hazards + changes"]
-    Mosaic --> Grid["Multi-resolution<br/>cost grid"]
-    Terrain --> Grid
-    Grid --> Route["A* / PPO<br/>route planning"]
-    Route --> UI["Flask mission<br/>dashboard"]
-    UI -->|"TCP 5001<br/>tasking + control"| Pi
+The spacecraft decides what to send; the ground station decides what it means. As prioritized images arrive over a slow, lossy link, this software reassembles them into a coherent picture of the surface, finds what changed since the last pass, and computes safe routes across the terrain — then lets an operator command the next pass from a live map.
+
+It runs end to end with no hardware: a mock CubeSat (`mock_cubesat.py`) reproduces the flight state machine and the throttled, MD5-checked link, so the full receive → analyze → plan → command loop is demonstrable on one laptop.
+
+## How it works
+
+`ground_station/server.py` starts three things in one process: a TCP receiver, the Flask dashboard, and an uplink commander.
+
+```
+ CubeSat ──(TCP 5000, throttled + MD5)──▶ Receiver ──▶ CV pipeline ──▶ data/processed
+    ▲                                                                      │
+    │                                                                      ▼
+ Commander ◀──(TCP 5001, JSON commands)── Operator ◀── Flask dashboard (port 3000)
 ```
 
-### Engineering highlights
+**Receiver** (`receiver/`) — TCP server on port 5000. Reads a JSON header then raw bytes, validates size and MD5, ACK/NACKs each image, writes the JPEG plus a metadata sidecar, and hands it to the pipeline on a worker thread. Filenames are validated against path traversal and transfers are size-bounded.
 
-- Bidirectional, ACK/NACK-based TCP protocol with MD5 integrity checks.
-- Bounded receiver headers and payloads, plus filename traversal protection.
-- Continuous image registration and multi-resolution terrain cost maps.
-- Classical computer vision with optional YOLO, CNN, and PPO extensions.
-- Multi-pass change detection and uncertainty-aware route planning.
-- Persistent mission state, downlink accounting, and a real-time operator UI.
-- Hardware-free simulation tools and regression tests for core algorithms.
+**CV pipeline** (`processing/pipeline.py`) — runs per image, each stage wrapped so one failure can't kill the rest:
+- **Mosaic** (`mosaic_stitcher.py`) — SIFT feature matching + RANSAC homography + distance-weighted feather blending onto an incremental canvas.
+- **Change detection** (`change_detector.py`) — the core science. Compares the same area across passes using **SSIM** on aligned grayscale (not raw pixel diff), filters by area and aspect ratio, classifies darkened/brightened regions, and runs a multi-pass persistence check to separate real surface changes from lighting artifacts.
+- **Hazard mapping** — shadow detection and slope estimation produce a terrain cost grid.
+- **Route planning** (`route_planner.py`) — 8-connected A\* with an octile heuristic over the cost grid, run three times (fastest / safest / balanced) with different cost weightings, blocking impassable cells.
 
-## Data flow
+**Uplink** (`uplink/`) — sends validated JSON commands to the spacecraft over TCP 5001; a Pi manager can discover a real Pi over mDNS and start/stop its flight software over SSH.
 
-```mermaid
-sequenceDiagram
-    participant F as Flight software
-    participant R as GCS receiver
-    participant P as Processing pipeline
-    participant D as Dashboard
+**Dashboard** (`dashboard/`) — a single-page operator console (Leaflet map, dark theme) served by Flask, exposing the mosaic, hazard map, change overlays, planned routes, live telemetry, downlink progress, and a PDF mission-report export.
 
-    F->>R: JSON header + JPEG/telemetry payload
-    R->>R: Enforce limits, validate size and MD5
-    alt valid transfer
-        R-->>F: ACK
-        R->>P: Persist image + metadata
-        P->>P: Register, classify, compare, route
-        P-->>D: Update mission state and artifacts
-    else invalid transfer
-        R-->>F: NACK
-    end
-    D->>F: JSON mission command
-```
+### Optional learned models
 
-## Quick start
+The pipeline can fuse learned models when their weights are present (`requirements-ml.txt`): a YOLOv8 object detector, a MobileNetV2 traversability classifier, and a pre-trained PPO policy that plans routes alongside A\*. **These weights are not committed to the repo.** Without them the system runs end to end on classical CV alone (mosaic + SSIM change detection + A\* routing); the learned components are optional add-ons, and `PPO Training/` ships a pre-trained policy artifact for inference, not a training environment.
 
-Requires Python 3.10+.
+## Tech
+
+- **Python 3.10+**
+- **Flask** backend (server-rendered page + JSON API + SSE for downlink progress); vanilla JS + **Leaflet** front end
+- **OpenCV** (SIFT mosaic, shadow/slope), **scikit-image** (SSIM), **NumPy** — classical CV is the backbone
+- Optional: **Ultralytics YOLOv8**, **Stable-Baselines3** (PPO), **torchvision** (MobileNetV2)
+- **paramiko** (SSH to a real Pi), **reportlab** (PDF report)
+
+## Running it
+
+No hardware needed — two terminals:
 
 ```bash
-git clone https://github.com/Ayush1298567/MIT-Cubesat-Ground-Control-Station.git
-cd MIT-Cubesat-Ground-Control-Station
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-Export any values you want to override, then start the station:
-
-```bash
-export CUBESAT_IP=192.168.1.229
+pip install -r requirements.txt           # add -r requirements-ml.txt for the learned models
 cd ground_station
-python server.py
+python server.py                          # terminal 1: dashboard at http://localhost:3000
+python mock_cubesat.py --gcs-ip 127.0.0.1 # terminal 2: simulated satellite
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The receiver listens on
-port `5000`; CubeSat commands use port `5001`.
+Then open the dashboard, CONNECT to `127.0.0.1`, and drive a mission with START PASS / END PASS. `python server.py --reprocess` re-runs the pipeline over already-received images.
 
-### Run without hardware
-
-Terminal 1:
+Tests:
 
 ```bash
-cd ground_station
-python server.py
+python -m unittest test_packet_handler.py test_change_detector.py test_pipeline.py
 ```
 
-Terminal 2:
+## Honest limits
 
-```bash
-python mock_cubesat.py --gcs-ip 127.0.0.1
-```
+- The learned models (YOLO, CNN, PPO) need external weight files that aren't in the repo; the demonstrable path is the classical-CV pipeline.
+- `PPO Training/` contains a pre-trained policy for inference; the training environment that produced it is not included.
+- There are no committed benchmark numbers. Change detection and routing have well-defined, inspectable behavior (SSIM threshold, area/aspect filters, A\* cost weights), not measured accuracy claims.
 
-For a dashboard-only portfolio demo, place this repository beside
-`MIT-BWSI-Cubesat` and run:
+## TODO — visual assets to add
 
-```bash
-cd ground_station
-python tools/demo_full_fake.py --port 3002
-```
+The repo has no screenshots yet, and the dashboard is the thing worth seeing. Add and reference here:
 
-## Processing architecture
-
-| Stage | Responsibility | Representative implementation |
-|---|---|---|
-| Reception | Bounds checking, transfer integrity, persistence | `receiver/listener.py` |
-| Registration | SIFT matching, homography estimation, mosaic blending | `processing/mosaic_stitcher.py` |
-| Terrain analysis | Shadows, roughness, slope, hazards, semantic masks | `processing/` |
-| Change detection | Align revisits and distinguish object/pixel changes | `processing/change_detector.py` |
-| Planning | Cost-aware A*, route alternatives, optional PPO policy | `processing/route_planner.py` |
-| Operations | Telemetry, tasking, route review, mission state | `dashboard/app.py` |
-
-The full design and API reference live in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
-[`PROJECT_DOCUMENTATION.md`](PROJECT_DOCUMENTATION.md). Assumptions and failure
-modes are documented explicitly in
-[`docs/ASSUMPTIONS_AND_LIMITATIONS.md`](docs/ASSUMPTIONS_AND_LIMITATIONS.md).
-
-## Verification
-
-```bash
-cd ground_station
-python -m unittest -v test_packet_handler.py test_change_detector.py
-python test_mission_intelligence.py
-python test_pipeline.py
-python test_receiver.py
-```
-
-The tests cover transfer validation, path safety, synthetic end-to-end
-reception, hazard extraction, multi-pass change detection, and route planning.
-ML training dependencies are intentionally separate:
-
-```bash
-pip install -r requirements-ml.txt
-```
-
-## Repository map
-
-```text
-ground_station/
-├── receiver/       # CubeSat → GCS transport and validation
-├── processing/     # mapping, perception, change detection, planning
-├── uplink/         # GCS → CubeSat commands and Pi management
-├── dashboard/      # Flask operator interface and JSON API
-├── llm/            # optional local mission Q&A integration
-├── models/         # model download/training support
-└── tools/          # simulation, calibration, evaluation, dataset tools
-```
-
-## Scope and limitations
-
-This is prototype research software, not flight-certified software. Absolute
-terrain localization is unavailable without an external reference; image
-registration can drift on low-texture regolith; learned detectors depend on
-training-domain quality; and route costs represent prototype rover assumptions.
-These limitations are surfaced in the UI and documented rather than hidden.
+- `docs/img/dashboard.png` — the running operator console with a mosaic and telemetry loaded.
+- `docs/img/change-detection.png` — a before/after pair with detected changes highlighted.
+- `docs/img/route-plan.gif` — a short clip of the three A\* routes (fastest/safest/balanced) drawn over the hazard map.
+- `docs/img/mission-loop.gif` — driving a full pass from the dashboard against the mock CubeSat.

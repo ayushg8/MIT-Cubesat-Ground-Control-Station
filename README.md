@@ -2,7 +2,7 @@
 
 Ground software for a CubeSat prototype. It receives throttled image and telemetry downlinks over TCP, stitches the images into a mosaic, detects surface changes between passes, plans hazard-aware routes across the imaged terrain, and drives the whole mission from a single-page operator dashboard. Built at the MIT Beaver Works Summer Institute.
 
-The companion flight software lives in [MIT-BWSI-Cubesat](https://github.com/Ayush1298567/MIT-BWSI-Cubesat).
+The companion flight software lives in [MIT-BWSI-Cubesat](https://github.com/ayushg8/MIT-BWSI-Cubesat).
 
 ## Overview
 
